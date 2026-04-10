@@ -29,10 +29,6 @@ class VaultController extends ChangeNotifier {
       message: 'Ready',
       localRevision: _revision,
     );
-    _checkTimer = Timer.periodic(
-      const Duration(seconds: 20),
-      (_) => _checkRemoteSilently(),
-    );
   }
 
   static const int maxAssetSizeBytes = 10 * 1024 * 1024;
@@ -58,7 +54,6 @@ class VaultController extends ChangeNotifier {
   int _savedChangeVersion = 0;
   String? _saveError;
   late SyncStatusSnapshot _syncStatus;
-  Timer? _checkTimer;
 
   int get revision => _revision;
   String get query => _query;
@@ -90,7 +85,6 @@ class VaultController extends ChangeNotifier {
       final haystack = <String>[
         doc.title,
         doc.content,
-        doc.tags.join(' '),
       ];
       if (regex != null) {
         return haystack.any(regex.hasMatch);
@@ -162,7 +156,6 @@ class VaultController extends ChangeNotifier {
   void updateSelectedDocument({
     required String title,
     required String content,
-    required List<String> tags,
   }) {
     final current = selectedDocument;
     if (current == null) {
@@ -176,12 +169,9 @@ class VaultController extends ChangeNotifier {
     final next = current.copyWith(
       title: title,
       content: content,
-      tags: tags,
       updatedAt: DateTime.now(),
     );
-    if (next.title == current.title &&
-        next.content == current.content &&
-        listEquals(next.tags, current.tags)) {
+    if (next.title == current.title && next.content == current.content) {
       return;
     }
 
@@ -462,11 +452,10 @@ class VaultController extends ChangeNotifier {
   @override
   void dispose() {
     _saveDebounce?.cancel();
-    _checkTimer?.cancel();
     super.dispose();
   }
 
-  Future<void> refreshRemoteStatus() async {
+  Future<SyncStatusSnapshot> refreshRemoteStatus() async {
     try {
       _syncStatus = await _onCheckRemoteStatus(_revision);
     } catch (error) {
@@ -477,20 +466,7 @@ class VaultController extends ChangeNotifier {
       );
     }
     notifyListeners();
-  }
-
-  Future<void> _checkRemoteSilently() async {
-    try {
-      final next = await _onCheckRemoteStatus(_revision);
-      if (next.state != _syncStatus.state ||
-          next.message != _syncStatus.message ||
-          next.remoteRevision != _syncStatus.remoteRevision) {
-        _syncStatus = next;
-        notifyListeners();
-      }
-    } catch (_) {
-      // Keep the current UI state when background remote checks fail.
-    }
+    return _syncStatus;
   }
 
   bool isAssetUsed(String assetPath) {

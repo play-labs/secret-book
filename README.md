@@ -6,14 +6,31 @@
 [![Status](https://img.shields.io/badge/Status-Prototype-F6AD55)](./PROJECT.md)
 [![Crypto](https://img.shields.io/badge/Crypto-Argon2id%20%2B%20XChaCha20--Poly1305-6B46C1)](./docs/architecture.md)
 
-个人加密文档管理应用的 Flutter Windows 桌面原型。
+
+```
+  ╔════════════════════════════════════════╗
+  ║         ░▒▓  VAULT LOCKED  ▓▒░         ║
+  ╠════════════════════════════════════════╣
+  ║  ENCRYPTION    [██████████]   100%     ║
+  ║  KEY_BACKUP    [          ]   NONE     ║
+  ║  RECOVERY      [          ]   NONE     ║
+  ╠════════════════════════════════════════╣
+  ║  ONLY KEY   ->  Your Password          ║
+  ║  WHO KNOWS  ->  Only You               ║
+  ║  LOST KEY   ->  /dev/null              ║
+  ╚════════════════════════════════════════╝
+
+  > 你的密码是解开一切唯一的钥匙
+  > 你的密码只有你知道
+  > _ 
+```
 
 ## 当前实现
 
 * 用户名入口，按用户名隔离本地目录和 OSS 路径
 * 首次创建主密码，后续通过主密码解锁
 * 支持修改主密码并重加密整个 `vault.bundle`
-* 左侧文档列表、搜索、标签、自动保存、`Ctrl+S` 立即保存
+* 左侧文档列表、搜索、自动保存、`Ctrl+S` 立即保存
 * Markdown 编辑与预览
 * 图片和任意二进制文件导入，统一存入 `assets/`
 * 预览中支持图片显示
@@ -138,3 +155,28 @@ flutter run -d windows
 ```text
 dist/secret_book-windows-release/
 ```
+
+## Version Updates
+
+The app can check for new releases from a remote `version.json`. Configure the JSON URL in the user's `config.json` through the `appUpdateJsonUrl` field.
+
+Recommended `version.json` structure:
+
+```json
+{
+  "schemaVersion": 1,
+  "app": "secret_book",
+  "platform": "windows",
+  "version": "0.1.1",
+  "build": 2,
+  "publishedAt": "2026-04-10T12:00:00Z",
+  "mandatory": false,
+  "downloadUrl": "https://example.com/downloads/secret_book_setup_0.1.1.exe",
+  "notes": [
+    "Add double confirmation for sync conflicts",
+    "Support username and version in the window title"
+  ]
+}
+```
+
+See [docs/version.example.json](/d:/UserData/code/app/secret-book/docs/version.example.json) for a complete sample file.

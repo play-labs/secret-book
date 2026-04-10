@@ -28,7 +28,9 @@ class AppConfig {
     required this.stsHttpMethod,
     required this.stsHeadersJson,
     required this.stsBodyJson,
+    required this.appUpdateJsonUrl,
     required this.autosaveDelaySeconds,
+    required this.remoteSyncIntervalSeconds,
     required this.lastSyncedRevision,
     required this.lastRemoteRevision,
     required this.lastSyncAt,
@@ -44,7 +46,9 @@ class AppConfig {
   final StsHttpMethod stsHttpMethod;
   final String stsHeadersJson;
   final String stsBodyJson;
+  final String appUpdateJsonUrl;
   final int autosaveDelaySeconds;
+  final int remoteSyncIntervalSeconds;
   final int? lastSyncedRevision;
   final int? lastRemoteRevision;
   final DateTime? lastSyncAt;
@@ -63,7 +67,9 @@ class AppConfig {
           '{"Content-Type":"application/json","X-Auth-Token":"replace-me"}',
       stsBodyJson:
           '{"role_session_name":"secret-book","duration_seconds":1800}',
+      appUpdateJsonUrl: 'https://secret-book.oss-cn-hangzhou.aliyuncs.com/version/version.json',
       autosaveDelaySeconds: 15,
+      remoteSyncIntervalSeconds: 60,
       lastSyncedRevision: null,
       lastRemoteRevision: null,
       lastSyncAt: null,
@@ -81,7 +87,9 @@ class AppConfig {
     StsHttpMethod? stsHttpMethod,
     String? stsHeadersJson,
     String? stsBodyJson,
+    String? appUpdateJsonUrl,
     int? autosaveDelaySeconds,
+    int? remoteSyncIntervalSeconds,
     int? lastSyncedRevision,
     bool clearLastSyncedRevision = false,
     int? lastRemoteRevision,
@@ -100,7 +108,9 @@ class AppConfig {
       stsHttpMethod: stsHttpMethod ?? this.stsHttpMethod,
       stsHeadersJson: stsHeadersJson ?? this.stsHeadersJson,
       stsBodyJson: stsBodyJson ?? this.stsBodyJson,
+      appUpdateJsonUrl: appUpdateJsonUrl ?? this.appUpdateJsonUrl,
       autosaveDelaySeconds: autosaveDelaySeconds ?? this.autosaveDelaySeconds,
+      remoteSyncIntervalSeconds: remoteSyncIntervalSeconds ?? this.remoteSyncIntervalSeconds,
       lastSyncedRevision: clearLastSyncedRevision
           ? null
           : lastSyncedRevision ?? this.lastSyncedRevision,
@@ -123,7 +133,9 @@ class AppConfig {
       'stsHttpMethod': stsHttpMethod.name,
       'stsHeadersJson': stsHeadersJson,
       'stsBodyJson': stsBodyJson,
+      'appUpdateJsonUrl': appUpdateJsonUrl,
       'autosaveDelaySeconds': autosaveDelaySeconds,
+      'remoteSyncIntervalSeconds': remoteSyncIntervalSeconds,
       'lastSyncedRevision': lastSyncedRevision,
       'lastRemoteRevision': lastRemoteRevision,
       'lastSyncAt': lastSyncAt?.toIso8601String(),
@@ -138,6 +150,12 @@ class AppConfig {
         ? rawDelay
         : rawDelay is String
             ? int.tryParse(rawDelay)
+            : null;
+    final rawSyncInterval = map['remoteSyncIntervalSeconds'];
+    final parsedSyncInterval = rawSyncInterval is int
+        ? rawSyncInterval
+        : rawSyncInterval is String
+            ? int.tryParse(rawSyncInterval)
             : null;
 
     return AppConfig(
@@ -157,7 +175,11 @@ class AppConfig {
           '{"Content-Type":"application/json","X-Auth-Token":"replace-me"}',
       stsBodyJson: map['stsBodyJson'] as String? ??
           '{"role_session_name":"secret-book","duration_seconds":1800}',
+      appUpdateJsonUrl: ((map['appUpdateJsonUrl'] as String?)?.trim().isNotEmpty ?? false)
+          ? (map['appUpdateJsonUrl'] as String).trim()
+          : 'https://secret-book.oss-cn-hangzhou.aliyuncs.com/version/version.json',
       autosaveDelaySeconds: parsedDelay == null || parsedDelay < 1 ? 15 : parsedDelay,
+      remoteSyncIntervalSeconds: parsedSyncInterval == null || parsedSyncInterval < 5 ? 60 : parsedSyncInterval,
       lastSyncedRevision: map['lastSyncedRevision'] as int?,
       lastRemoteRevision: map['lastRemoteRevision'] as int?,
       lastSyncAt: map['lastSyncAt'] == null
