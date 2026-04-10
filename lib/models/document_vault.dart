@@ -28,7 +28,7 @@ class DocumentVault {
 
 - 解锁本地保险库
 - 文档列表与搜索
-- 标题、标签、正文编辑
+- 标题、正文编辑
 - Markdown 实时预览
 - `vault.bundle` 序列化与加密存储
 
@@ -39,7 +39,7 @@ class DocumentVault {
 3. 远端同步冲突处理
 4. 更完善的设置与诊断
 ''',
-          tags: ['指南', '原型'],
+          tags: const [],
           assetRefs: const [],
           createdAt: now.subtract(const Duration(days: 3)),
           updatedAt: now.subtract(const Duration(minutes: 18)),
@@ -56,7 +56,7 @@ class DocumentVault {
 3. 上传前检查远端 revision
 4. 如果远端已变化，则停止覆盖并提示拉取
 ''',
-          tags: ['同步'],
+          tags: const [],
           assetRefs: const [],
           createdAt: now.subtract(const Duration(days: 2)),
           updatedAt: now.subtract(const Duration(hours: 2, minutes: 12)),
@@ -75,7 +75,7 @@ class DocumentVault {
 
 图片和其他二进制文件可以存放在 `assets/` 目录中。
 ''',
-          tags: ['保险库', '设计'],
+          tags: const [],
           assetRefs: const [],
           createdAt: now.subtract(const Duration(days: 1)),
           updatedAt: now.subtract(const Duration(hours: 6, minutes: 5)),

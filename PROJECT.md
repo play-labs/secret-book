@@ -22,7 +22,6 @@ Document
 - id
 - title
 - content
-- tags
 - createdAt
 - updatedAt
 - assetRefs

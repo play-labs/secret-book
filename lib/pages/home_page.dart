@@ -23,6 +23,9 @@ class HomePage extends StatefulWidget {
     required this.masterPasswordLabel,
     required this.onLock,
     required this.onChangePassword,
+    required this.onInstallDownloadedUpdate,
+    required this.titleUpdateLabel,
+    required this.showTitleUpdateAction,
   });
 
   final VaultController controller;
@@ -31,6 +34,9 @@ class HomePage extends StatefulWidget {
   final String remoteBundlePath;
   final String masterPasswordLabel;
   final VoidCallback onLock;
+  final Future<void> Function() onInstallDownloadedUpdate;
+  final String? titleUpdateLabel;
+  final bool showTitleUpdateAction;
   final Future<void> Function({
     required String currentPassword,
     required String newPassword,
@@ -45,8 +51,8 @@ enum _WorkspaceView { document, files, tools }
 class _HomePageState extends State<HomePage> {
   late final TextEditingController _searchController;
   final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _tagsController = TextEditingController();
-  final _MarkdownEditingController _contentController = _MarkdownEditingController();
+  final _MarkdownEditingController _contentController =
+      _MarkdownEditingController();
 
   bool _detailsExpanded = false;
   bool _previewMode = true;
@@ -78,7 +84,6 @@ class _HomePageState extends State<HomePage> {
     widget.controller.removeListener(_syncEditingState);
     _searchController.dispose();
     _titleController.dispose();
-    _tagsController.dispose();
     _contentController.dispose();
     super.dispose();
   }
@@ -95,14 +100,12 @@ class _HomePageState extends State<HomePage> {
     if (doc == null) {
       _boundDocumentId = null;
       _titleController.clear();
-      _tagsController.clear();
       _contentController.clear();
       return;
     }
     if (force || _boundDocumentId != doc.id) {
       _boundDocumentId = doc.id;
       _titleController.text = doc.title;
-      _tagsController.text = doc.tags.join(', ');
       _contentController.text = doc.content;
     }
   }
@@ -115,16 +118,7 @@ class _HomePageState extends State<HomePage> {
     widget.controller.updateSelectedDocument(
       title: _titleController.text,
       content: _contentController.text,
-      tags: _parseTags(_tagsController.text),
     );
-  }
-
-  void _onTagsSubmitted() {
-    final normalized = _parseTags(_tagsController.text).join(', ');
-    if (_tagsController.text != normalized) {
-      _tagsController.text = normalized;
-    }
-    _onDocumentChanged();
   }
 
   Future<void> _saveNow() async {
@@ -150,7 +144,8 @@ class _HomePageState extends State<HomePage> {
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF8F2D2D)),
+              style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF8F2D2D)),
               child: const Text('Delete'),
             ),
           ],
@@ -174,7 +169,8 @@ class _HomePageState extends State<HomePage> {
         allowMultiple: false,
         withData: true,
       );
-      final file = result == null || result.files.isEmpty ? null : result.files.first;
+      final file =
+          result == null || result.files.isEmpty ? null : result.files.first;
       if (file == null) {
         return;
       }
@@ -211,10 +207,12 @@ class _HomePageState extends State<HomePage> {
         return;
       }
       if (bytes.length > VaultController.maxAssetSizeBytes) {
-        _showMessage('Clipboard image is too large. Files over 10MB are not allowed.');
+        _showMessage(
+            'Clipboard image is too large. Files over 10MB are not allowed.');
         return;
       }
-      _insertImportedAsset(bytes: bytes, sourceName: 'clipboard.png', mediaType: 'image/png');
+      _insertImportedAsset(
+          bytes: bytes, sourceName: 'clipboard.png', mediaType: 'image/png');
     } catch (error) {
       _showMessage('Clipboard image import failed: $error');
     } finally {
@@ -265,13 +263,16 @@ class _HomePageState extends State<HomePage> {
       mediaType: mediaType,
     );
     if (assetPath == null) {
-      _showMessage('Please select a document first, and keep files under 10MB.');
+      _showMessage(
+          'Please select a document first, and keep files under 10MB.');
       return;
     }
     final markdown = _buildAssetMarkdown(assetPath, sourceName, mediaType);
     final selection = _contentController.selection;
     final sourceText = _contentController.text;
-    final safeOffset = selection.isValid ? selection.baseOffset.clamp(0, sourceText.length) : sourceText.length;
+    final safeOffset = selection.isValid
+        ? selection.baseOffset.clamp(0, sourceText.length)
+        : sourceText.length;
     final nextText = sourceText.replaceRange(safeOffset, safeOffset, markdown);
     _contentController.value = TextEditingValue(
       text: nextText,
@@ -301,13 +302,18 @@ class _HomePageState extends State<HomePage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(_assetDisplayName(asset), style: Theme.of(context).textTheme.titleLarge),
+                            Text(_assetDisplayName(asset),
+                                style: Theme.of(context).textTheme.titleLarge),
                             const SizedBox(height: 4),
-                            SelectableText(asset.path, style: const TextStyle(color: Color(0xFF5B6A63))),
+                            SelectableText(asset.path,
+                                style:
+                                    const TextStyle(color: Color(0xFF5B6A63))),
                           ],
                         ),
                       ),
-                      IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.close)),
+                      IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.close)),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -322,19 +328,23 @@ class _HomePageState extends State<HomePage> {
                           ? InteractiveViewer(
                               minScale: 0.5,
                               maxScale: 6,
-                              child: Center(child: Image.memory(asset.bytes, fit: BoxFit.contain)),
+                              child: Center(
+                                  child: Image.memory(asset.bytes,
+                                      fit: BoxFit.contain)),
                             )
                           : Center(
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(Icons.insert_drive_file_outlined, size: 56),
+                                  const Icon(Icons.insert_drive_file_outlined,
+                                      size: 56),
                                   const SizedBox(height: 12),
                                   Text(asset.mediaType),
                                   const SizedBox(height: 4),
                                   Text('${asset.size} bytes'),
                                   const SizedBox(height: 12),
-                                  const Text('This file type does not support inline preview.'),
+                                  const Text(
+                                      'This file type does not support inline preview.'),
                                 ],
                               ),
                             ),
@@ -351,7 +361,10 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _copyMarkdownReference(AssetItem asset) async {
     await Clipboard.setData(
-      ClipboardData(text: _buildAssetMarkdown(asset.path, _assetDisplayName(asset), asset.mediaType).trim()),
+      ClipboardData(
+          text: _buildAssetMarkdown(
+                  asset.path, _assetDisplayName(asset), asset.mediaType)
+              .trim()),
     );
     if (mounted) {
       _showMessage('Markdown reference copied.');
@@ -386,10 +399,15 @@ class _HomePageState extends State<HomePage> {
       builder: (context) {
         return AlertDialog(
           title: const Text('Remove current reference?'),
-          content: Text('This removes the current document reference to ${_assetDisplayName(asset)}.'),
+          content: Text(
+              'This removes the current document reference to ${_assetDisplayName(asset)}.'),
           actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Remove')),
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Remove')),
           ],
         );
       },
@@ -397,7 +415,8 @@ class _HomePageState extends State<HomePage> {
     if (confirmed != true || !mounted) {
       return;
     }
-    final updatedContent = _removeAssetMarkdown(_contentController.text, asset.path);
+    final updatedContent =
+        _removeAssetMarkdown(_contentController.text, asset.path);
     _contentController.text = updatedContent;
     widget.controller.removeSelectedDocumentAssetReference(asset.path);
     _onDocumentChanged();
@@ -417,10 +436,13 @@ class _HomePageState extends State<HomePage> {
                 : 'This will permanently remove ${_assetDisplayName(asset)} from the vault.',
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel')),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF8F2D2D)),
+              style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF8F2D2D)),
               child: const Text('Delete'),
             ),
           ],
@@ -432,7 +454,11 @@ class _HomePageState extends State<HomePage> {
     }
     final deleted = widget.controller.deleteAsset(asset.path);
     _showMessage(
-      deleted ? (referenceCount > 0 ? 'File deleted and references removed.' : 'File deleted.') : 'File delete failed.',
+      deleted
+          ? (referenceCount > 0
+              ? 'File deleted and references removed.'
+              : 'File deleted.')
+          : 'File delete failed.',
     );
   }
 
@@ -440,7 +466,8 @@ class _HomePageState extends State<HomePage> {
     if (event is! KeyDownEvent) {
       return KeyEventResult.ignored;
     }
-    final isPaste = (HardwareKeyboard.instance.isControlPressed || HardwareKeyboard.instance.isMetaPressed) &&
+    final isPaste = (HardwareKeyboard.instance.isControlPressed ||
+            HardwareKeyboard.instance.isMetaPressed) &&
         event.logicalKey == LogicalKeyboardKey.keyV;
     if (isPaste) {
       unawaited(_pasteImageFromClipboard(silentIfEmpty: true));
@@ -448,12 +475,15 @@ class _HomePageState extends State<HomePage> {
     return KeyEventResult.ignored;
   }
 
-  String _buildAssetMarkdown(String assetPath, String sourceName, String? mediaType) {
+  String _buildAssetMarkdown(
+      String assetPath, String sourceName, String? mediaType) {
     final baseName = sourceName.split('.').first.trim();
     final label = baseName.isEmpty ? 'asset' : baseName;
     final prefix = _contentController.text.isEmpty ? '' : '\n';
     final isImage = (mediaType ?? '').startsWith('image/');
-    return isImage ? '$prefix![$label]($assetPath)\n' : '$prefix[$label]($assetPath)\n';
+    return isImage
+        ? '$prefix![$label]($assetPath)\n'
+        : '$prefix[$label]($assetPath)\n';
   }
 
   String _assetDisplayName(AssetItem asset) {
@@ -467,23 +497,18 @@ class _HomePageState extends State<HomePage> {
 
   String _removeAssetMarkdown(String content, String assetPath) {
     final escaped = RegExp.escape(assetPath);
-    var updated = content.replaceAll(RegExp('^\\s*!?\\[[^\\]]*\\]\\($escaped\\)\\s*\\n?', multiLine: true), '');
-    updated = updated.replaceAll(RegExp('!?\\[[^\\]]*\\]\\($escaped\\)\\n?'), '');
+    var updated = content.replaceAll(
+        RegExp('^\\s*!?\\[[^\\]]*\\]\\($escaped\\)\\s*\\n?', multiLine: true),
+        '');
+    updated =
+        updated.replaceAll(RegExp('!?\\[[^\\]]*\\]\\($escaped\\)\\n?'), '');
     updated = updated.replaceAll(RegExp('\n{3,}'), '\n\n');
     return updated.trimRight();
   }
 
-  List<String> _parseTags(String raw) {
-    return raw
-        .split(',')
-        .map((item) => item.trim())
-        .where((item) => item.isNotEmpty)
-        .toSet()
-        .toList();
-  }
-
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _showChangePasswordDialog() async {
@@ -507,7 +532,8 @@ class _HomePageState extends State<HomePage> {
                 final newPassword = nextController.text;
                 final confirmPassword = confirmController.text;
                 if (currentPassword.isEmpty) {
-                  setDialogState(() => errorText = 'Enter your current password.');
+                  setDialogState(
+                      () => errorText = 'Enter your current password.');
                   return;
                 }
                 if (newPassword.trim().isEmpty) {
@@ -515,15 +541,18 @@ class _HomePageState extends State<HomePage> {
                   return;
                 }
                 if (newPassword.length < 8) {
-                  setDialogState(() => errorText = 'New password must be at least 8 characters.');
+                  setDialogState(() => errorText =
+                      'New password must be at least 8 characters.');
                   return;
                 }
                 if (newPassword != confirmPassword) {
-                  setDialogState(() => errorText = 'The new passwords do not match.');
+                  setDialogState(
+                      () => errorText = 'The new passwords do not match.');
                   return;
                 }
                 if (newPassword == currentPassword) {
-                  setDialogState(() => errorText = 'Use a different password from the current one.');
+                  setDialogState(() => errorText =
+                      'Use a different password from the current one.');
                   return;
                 }
                 setDialogState(() {
@@ -531,7 +560,9 @@ class _HomePageState extends State<HomePage> {
                   errorText = null;
                 });
                 try {
-                  await widget.onChangePassword(currentPassword: currentPassword, newPassword: newPassword);
+                  await widget.onChangePassword(
+                      currentPassword: currentPassword,
+                      newPassword: newPassword);
                   if (!mounted) {
                     return;
                   }
@@ -560,8 +591,11 @@ class _HomePageState extends State<HomePage> {
                           labelText: 'Current password',
                           errorText: errorText,
                           suffixIcon: IconButton(
-                            onPressed: () => setDialogState(() => obscureCurrent = !obscureCurrent),
-                            icon: Icon(obscureCurrent ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                            onPressed: () => setDialogState(
+                                () => obscureCurrent = !obscureCurrent),
+                            icon: Icon(obscureCurrent
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined),
                           ),
                         ),
                       ),
@@ -573,8 +607,11 @@ class _HomePageState extends State<HomePage> {
                         decoration: InputDecoration(
                           labelText: 'New password',
                           suffixIcon: IconButton(
-                            onPressed: () => setDialogState(() => obscureNext = !obscureNext),
-                            icon: Icon(obscureNext ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                            onPressed: () => setDialogState(
+                                () => obscureNext = !obscureNext),
+                            icon: Icon(obscureNext
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined),
                           ),
                         ),
                       ),
@@ -587,8 +624,11 @@ class _HomePageState extends State<HomePage> {
                         decoration: InputDecoration(
                           labelText: 'Confirm new password',
                           suffixIcon: IconButton(
-                            onPressed: () => setDialogState(() => obscureConfirm = !obscureConfirm),
-                            icon: Icon(obscureConfirm ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                            onPressed: () => setDialogState(
+                                () => obscureConfirm = !obscureConfirm),
+                            icon: Icon(obscureConfirm
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined),
                           ),
                         ),
                       ),
@@ -596,8 +636,12 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
                 actions: [
-                  TextButton(onPressed: isSubmitting ? null : () => navigator.pop(), child: const Text('Cancel')),
-                  FilledButton(onPressed: isSubmitting ? null : submit, child: Text(isSubmitting ? 'Updating...' : 'Update')),
+                  TextButton(
+                      onPressed: isSubmitting ? null : () => navigator.pop(),
+                      child: const Text('Cancel')),
+                  FilledButton(
+                      onPressed: isSubmitting ? null : submit,
+                      child: Text(isSubmitting ? 'Updating...' : 'Update')),
                 ],
               );
             },
@@ -621,7 +665,8 @@ class _HomePageState extends State<HomePage> {
         final assets = widget.controller.allAssets;
         return Shortcuts(
           shortcuts: const {
-            SingleActivator(LogicalKeyboardKey.keyS, control: true): SaveIntent(),
+            SingleActivator(LogicalKeyboardKey.keyS, control: true):
+                SaveIntent(),
           },
           child: Actions(
             actions: {
@@ -642,7 +687,8 @@ class _HomePageState extends State<HomePage> {
                       SizedBox(
                         width: 340,
                         child: DecoratedBox(
-                          decoration: const BoxDecoration(color: Color(0xFF17352C)),
+                          decoration:
+                              const BoxDecoration(color: Color(0xFF17352C)),
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
                             child: Column(
@@ -658,16 +704,20 @@ class _HomePageState extends State<HomePage> {
                                   remoteBundlePath: widget.remoteBundlePath,
                                   sessionLabel: widget.masterPasswordLabel,
                                   saveLabel: _saveLabel(widget.controller),
-                                  onToggle: () => setState(() => _detailsExpanded = !_detailsExpanded),
+                                  onToggle: () => setState(() =>
+                                      _detailsExpanded = !_detailsExpanded),
                                 ),
                                 const SizedBox(height: 20),
                                 _SidebarSearch(
                                   controller: _searchController,
                                   wholeWord: widget.controller.wholeWord,
                                   regexMode: widget.controller.regexMode,
-                                  onChanged: widget.controller.updateSearchQuery,
-                                  onToggleWholeWord: widget.controller.toggleWholeWord,
-                                  onToggleRegex: widget.controller.toggleRegexMode,
+                                  onChanged:
+                                      widget.controller.updateSearchQuery,
+                                  onToggleWholeWord:
+                                      widget.controller.toggleWholeWord,
+                                  onToggleRegex:
+                                      widget.controller.toggleRegexMode,
                                 ),
                                 const SizedBox(height: 18),
                                 FilledButton.icon(
@@ -675,8 +725,11 @@ class _HomePageState extends State<HomePage> {
                                   style: FilledButton.styleFrom(
                                     backgroundColor: const Color(0xFF14745C),
                                     foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(vertical: 18),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 18),
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(22)),
                                   ),
                                   icon: const Icon(Icons.add),
                                   label: const Text('New Document'),
@@ -686,16 +739,21 @@ class _HomePageState extends State<HomePage> {
                                   child: documents.isEmpty
                                       ? const _EmptySidebarState()
                                       : ScrollConfiguration(
-                                          behavior: const _MouseDragScrollBehavior(),
+                                          behavior:
+                                              const _MouseDragScrollBehavior(),
                                           child: ListView.separated(
                                             itemCount: documents.length,
-                                            separatorBuilder: (_, __) => const SizedBox(height: 14),
+                                            separatorBuilder: (_, __) =>
+                                                const SizedBox(height: 14),
                                             itemBuilder: (context, index) {
                                               final document = documents[index];
                                               return _DocumentListTile(
                                                 document: document,
-                                                selected: selected?.id == document.id,
-                                                onTap: () => widget.controller.selectDocument(document.id),
+                                                selected:
+                                                    selected?.id == document.id,
+                                                onTap: () => widget.controller
+                                                    .selectDocument(
+                                                        document.id),
                                               );
                                             },
                                           ),
@@ -712,129 +770,186 @@ class _HomePageState extends State<HomePage> {
                           child: selected == null
                               ? _EmptyDocumentState(
                                   onCreate: widget.controller.createDocument,
-                                  showTools: () => setState(() => _workspaceView = _WorkspaceView.tools),
+                                  showTools: () => setState(() =>
+                                      _workspaceView = _WorkspaceView.tools),
                                 )
                               : Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
                                   children: [
                                     Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         _WorkspaceSegment(
                                           value: _workspaceView,
-                                          onChanged: (next) => setState(() => _workspaceView = next),
+                                          onChanged: (next) => setState(
+                                              () => _workspaceView = next),
                                         ),
                                         const Spacer(),
-                                        if (_workspaceView != _WorkspaceView.tools)
+                                        if (_workspaceView !=
+                                            _WorkspaceView.tools) ...[
                                           FilledButton.icon(
-                                            onPressed: _isImportingAsset ? null : _pickLocalFile,
+                                            onPressed: _isImportingAsset
+                                                ? null
+                                                : _pickLocalFile,
                                             style: FilledButton.styleFrom(
-                                              backgroundColor: const Color(0xFFD3ECE1),
-                                              foregroundColor: const Color(0xFF0F6F59),
+                                              backgroundColor:
+                                                  const Color(0xFFD3ECE1),
+                                              foregroundColor:
+                                                  const Color(0xFF0F6F59),
                                             ),
                                             icon: _isImportingAsset
                                                 ? const SizedBox(
                                                     width: 16,
                                                     height: 16,
-                                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                            strokeWidth: 2),
                                                   )
-                                                : const Icon(Icons.upload_file_outlined),
+                                                : const Icon(
+                                                    Icons.upload_file_outlined),
                                             label: const Text('Upload File'),
                                           ),
-                                        if (_workspaceView == _WorkspaceView.document) ...[
-                                          const SizedBox(width: 16),
-                                          _ModeSegment(
-                                            previewMode: _previewMode,
-                                            onChanged: (value) => setState(() => _previewMode = value),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                    const SizedBox(height: 24),
-                                    if (_workspaceView == _WorkspaceView.document) ...[
-                                      Row(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Expanded(
-                                            child: TextField(
-                                              controller: _titleController,
-                                              onChanged: (_) => _onDocumentChanged(),
-                                              style: Theme.of(context).textTheme.displaySmall,
-                                              decoration: const InputDecoration(
-                                                border: InputBorder.none,
-                                                isCollapsed: true,
-                                                hintText: 'Untitled Document',
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 16),
+                                          const SizedBox(width: 12),
                                           FilledButton.icon(
-                                            onPressed: widget.controller.isSaving ? null : _saveNow,
+                                            onPressed:
+                                                widget.controller.isSaving
+                                                    ? null
+                                                    : _saveNow,
                                             style: FilledButton.styleFrom(
-                                              backgroundColor: const Color(0xFFD3ECE1),
-                                              foregroundColor: const Color(0xFF29443D),
+                                              backgroundColor:
+                                                  const Color(0xFFD3ECE1),
+                                              foregroundColor:
+                                                  const Color(0xFF29443D),
                                             ),
-                                            icon: const Icon(Icons.save_outlined),
+                                            icon:
+                                                const Icon(Icons.save_outlined),
                                             label: const Text('Save Now'),
                                           ),
                                           const SizedBox(width: 12),
                                           FilledButton.icon(
-                                            onPressed: _showChangePasswordDialog,
+                                            onPressed:
+                                                _showChangePasswordDialog,
                                             style: FilledButton.styleFrom(
-                                              backgroundColor: const Color(0xFFD3ECE1),
-                                              foregroundColor: const Color(0xFF29443D),
+                                              backgroundColor:
+                                                  const Color(0xFFD3ECE1),
+                                              foregroundColor:
+                                                  const Color(0xFF29443D),
                                             ),
-                                            icon: const Icon(Icons.key_outlined),
-                                            label: const Text('Change Password'),
+                                            icon:
+                                                const Icon(Icons.key_outlined),
+                                            label:
+                                                const Text('Change Password'),
                                           ),
                                           const SizedBox(width: 12),
                                           FilledButton.icon(
                                             onPressed: widget.onLock,
                                             style: FilledButton.styleFrom(
-                                              backgroundColor: const Color(0xFFD3ECE1),
-                                              foregroundColor: const Color(0xFF29443D),
+                                              backgroundColor:
+                                                  const Color(0xFFD3ECE1),
+                                              foregroundColor:
+                                                  const Color(0xFF29443D),
                                             ),
-                                            icon: const Icon(Icons.lock_outline),
+                                            icon:
+                                                const Icon(Icons.lock_outline),
                                             label: const Text('Lock'),
                                           ),
                                         ],
-                                      ),
-                                      const SizedBox(height: 26),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 24),
+                                    if (_workspaceView ==
+                                        _WorkspaceView.document) ...[
                                       Row(
-                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Expanded(
-                                            child: TextField(
-                                              controller: _tagsController,
-                                              onChanged: (_) => _onDocumentChanged(),
-                                              onSubmitted: (_) => _onTagsSubmitted(),
-                                              decoration: const InputDecoration(
-                                                labelText: 'Tags',
-                                                hintText: 'work, draft, private',
-                                              ),
+                                            child: Row(
+                                              children: [
+                                                Expanded(
+                                                  child: TextField(
+                                                    controller:
+                                                        _titleController,
+                                                    onChanged: (_) =>
+                                                        _onDocumentChanged(),
+                                                    style: Theme.of(context)
+                                                        .textTheme
+                                                        .displaySmall,
+                                                    decoration:
+                                                        const InputDecoration(
+                                                      border: InputBorder.none,
+                                                      isCollapsed: true,
+                                                      hintText:
+                                                          'Untitled Document',
+                                                    ),
+                                                  ),
+                                                ),
+                                                if (widget.titleUpdateLabel !=
+                                                    null) ...[
+                                                  const SizedBox(width: 10),
+                                                  InkWell(
+                                                    onTap: widget
+                                                            .showTitleUpdateAction
+                                                        ? widget
+                                                            .onInstallDownloadedUpdate
+                                                        : null,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            8),
+                                                    child: Padding(
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                          horizontal: 6,
+                                                          vertical: 6),
+                                                      child: Text(
+                                                        widget
+                                                            .titleUpdateLabel!,
+                                                        style: Theme.of(context)
+                                                            .textTheme
+                                                            .titleMedium
+                                                            ?.copyWith(
+                                                              color: widget
+                                                                      .showTitleUpdateAction
+                                                                  ? const Color(
+                                                                      0xFF0F6F59)
+                                                                  : const Color(
+                                                                      0xFF5E6E68),
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700,
+                                                            ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
                                             ),
                                           ),
                                         ],
                                       ),
-                                      const SizedBox(height: 14),
+                                      const SizedBox(height: 18),
                                       Row(
-                                        crossAxisAlignment: CrossAxisAlignment.center,
                                         children: [
-                                          Expanded(
-                                            child: Wrap(
-                                              spacing: 10,
-                                              runSpacing: 10,
-                                              children: _parseTags(_tagsController.text).map((tag) => Chip(label: Text(tag))).toList(),
+                                          if (_workspaceView ==
+                                              _WorkspaceView.document)
+                                            _ModeSegment(
+                                              previewMode: _previewMode,
+                                              onChanged: (value) => setState(
+                                                  () => _previewMode = value),
                                             ),
-                                          ),
-                                          const SizedBox(width: 12),
+                                          const Spacer(),
                                           IconButton.filledTonal(
                                             onPressed: _deleteSelectedDocument,
                                             style: IconButton.styleFrom(
-                                              backgroundColor: const Color(0xFFF7D8D6),
-                                              foregroundColor: const Color(0xFFB3261E),
+                                              backgroundColor:
+                                                  const Color(0xFFF7D8D6),
+                                              foregroundColor:
+                                                  const Color(0xFFB3261E),
                                             ),
-                                            icon: const Icon(Icons.delete_outline),
+                                            icon: const Icon(
+                                                Icons.delete_outline),
                                           ),
                                         ],
                                       ),
@@ -843,28 +958,39 @@ class _HomePageState extends State<HomePage> {
                                         child: _previewMode
                                             ? _MarkdownPreview(
                                                 document: selected,
-                                                assetBytesForPath: widget.controller.assetBytesForPath,
+                                                assetBytesForPath: widget
+                                                    .controller
+                                                    .assetBytesForPath,
                                               )
-                                            : _EditorSurface(controller: _contentController, onChanged: (_) => _onDocumentChanged()),
+                                            : _EditorSurface(
+                                                controller: _contentController,
+                                                onChanged: (_) =>
+                                                    _onDocumentChanged()),
                                       ),
-                                    ] else if (_workspaceView == _WorkspaceView.files) ...[
+                                    ] else if (_workspaceView ==
+                                        _WorkspaceView.files) ...[
                                       Expanded(
                                         child: _AssetLibraryView(
                                           assets: assets,
                                           selectedDocument: selected,
-                                          referenceCountForPath: widget.controller.assetReferenceCount,
+                                          referenceCountForPath: widget
+                                              .controller.assetReferenceCount,
                                           isImageAsset: _isImageAsset,
                                           assetDisplayName: _assetDisplayName,
                                           onPreviewAsset: _previewAsset,
-                                          onCopyMarkdownReference: _copyMarkdownReference,
+                                          onCopyMarkdownReference:
+                                              _copyMarkdownReference,
                                           onDownloadAsset: _downloadAsset,
-                                          onRemoveCurrentReference: _removeCurrentAssetReference,
+                                          onRemoveCurrentReference:
+                                              _removeCurrentAssetReference,
                                           onDeleteAsset: _deleteAsset,
                                         ),
                                       ),
                                     ] else ...[
                                       const Expanded(
-                                        child: Align(alignment: Alignment.topLeft, child: _PasswordGeneratorCard()),
+                                        child: Align(
+                                            alignment: Alignment.topLeft,
+                                            child: _PasswordGeneratorCard()),
                                       ),
                                     ],
                                   ],
@@ -914,12 +1040,18 @@ class _VaultHeader extends StatelessWidget {
       children: [
         Text(
           'Secret Book',
-          style: Theme.of(context).textTheme.displaySmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w800),
+          style: Theme.of(context)
+              .textTheme
+              .displaySmall
+              ?.copyWith(color: Colors.white, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 12),
         Text(
           'Encrypted document manager prototype',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(color: const Color(0xFFF0F7F3), height: 1.45),
+          style: Theme.of(context)
+              .textTheme
+              .titleMedium
+              ?.copyWith(color: const Color(0xFFF0F7F3), height: 1.45),
         ),
       ],
     );
@@ -952,7 +1084,9 @@ class _VaultDetailsCard extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF214B3F), borderRadius: BorderRadius.circular(24)),
+      decoration: BoxDecoration(
+          color: const Color(0xFF214B3F),
+          borderRadius: BorderRadius.circular(24)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -964,9 +1098,14 @@ class _VaultDetailsCard extends StatelessWidget {
                 const Icon(Icons.tune, color: Color(0xFFDDECE5)),
                 const SizedBox(width: 12),
                 const Expanded(
-                  child: Text('Vault Details', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+                  child: Text('Vault Details',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700)),
                 ),
-                Icon(isExpanded ? Icons.expand_less : Icons.expand_more, color: const Color(0xFFDDECE5)),
+                Icon(isExpanded ? Icons.expand_less : Icons.expand_more,
+                    color: const Color(0xFFDDECE5)),
               ],
             ),
           ),
@@ -974,11 +1113,14 @@ class _VaultDetailsCard extends StatelessWidget {
             const SizedBox(height: 16),
             _SidebarDetailRow(label: 'Revision', value: '$revision'),
             _SidebarDetailRow(label: 'Bundle', value: '$bundleSizeBytes bytes'),
-            _SidebarDetailRow(label: 'Local', value: bundlePath, compactValue: true),
-            _SidebarDetailRow(label: 'Remote', value: remoteBundlePath, compactValue: true),
+            _SidebarDetailRow(
+                label: 'Local', value: bundlePath, compactValue: true),
+            _SidebarDetailRow(
+                label: 'Remote', value: remoteBundlePath, compactValue: true),
             _SidebarDetailRow(label: 'Session', value: sessionLabel),
             _SidebarDetailRow(label: 'Save', value: saveLabel),
-            const _SidebarDetailRow(label: 'Shortcut', value: 'Ctrl+S / Ctrl+V'),
+            const _SidebarDetailRow(
+                label: 'Shortcut', value: 'Ctrl+S / Ctrl+V'),
           ],
         ],
       ),
@@ -987,7 +1129,8 @@ class _VaultDetailsCard extends StatelessWidget {
 }
 
 class _SidebarDetailRow extends StatelessWidget {
-  const _SidebarDetailRow({required this.label, required this.value, this.compactValue = false});
+  const _SidebarDetailRow(
+      {required this.label, required this.value, this.compactValue = false});
 
   final String label;
   final String value;
@@ -1002,13 +1145,21 @@ class _SidebarDetailRow extends StatelessWidget {
         children: [
           SizedBox(
             width: 76,
-            child: Text(label, style: const TextStyle(color: Color(0xFFC5DDD4), fontSize: 13, fontWeight: FontWeight.w700)),
+            child: Text(label,
+                style: const TextStyle(
+                    color: Color(0xFFC5DDD4),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700)),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: SelectableText(
               value,
-              style: TextStyle(color: Colors.white, fontSize: compactValue ? 13 : 14, height: 1.3, fontWeight: FontWeight.w500),
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: compactValue ? 13 : 14,
+                  height: 1.3,
+                  fontWeight: FontWeight.w500),
             ),
           ),
         ],
@@ -1044,12 +1195,14 @@ class _SidebarSearch extends StatelessWidget {
           onChanged: onChanged,
           style: const TextStyle(color: Color(0xFFF9FCFA)),
           decoration: InputDecoration(
-            hintText: 'Search title, content, tags',
+            hintText: 'Search title, content',
             hintStyle: const TextStyle(color: Color(0xFFD2E3DB)),
             prefixIcon: const Icon(Icons.search, color: Color(0xFFD1E6DB)),
             filled: true,
             fillColor: const Color(0xFF214B3F),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(22),
+                borderSide: BorderSide.none),
           ),
         ),
         const SizedBox(height: 14),
@@ -1057,8 +1210,14 @@ class _SidebarSearch extends StatelessWidget {
           spacing: 12,
           runSpacing: 12,
           children: [
-            _SidebarToggleChip(label: 'Whole Word', active: wholeWord, onTap: () => onToggleWholeWord(!wholeWord)),
-            _SidebarToggleChip(label: 'Regex', active: regexMode, onTap: () => onToggleRegex(!regexMode)),
+            _SidebarToggleChip(
+                label: 'Whole Word',
+                active: wholeWord,
+                onTap: () => onToggleWholeWord(!wholeWord)),
+            _SidebarToggleChip(
+                label: 'Regex',
+                active: regexMode,
+                onTap: () => onToggleRegex(!regexMode)),
           ],
         ),
       ],
@@ -1067,7 +1226,8 @@ class _SidebarSearch extends StatelessWidget {
 }
 
 class _SidebarToggleChip extends StatelessWidget {
-  const _SidebarToggleChip({required this.label, required this.active, required this.onTap});
+  const _SidebarToggleChip(
+      {required this.label, required this.active, required this.onTap});
 
   final String label;
   final bool active;
@@ -1122,7 +1282,8 @@ class _SidebarToggleChip extends StatelessWidget {
 }
 
 class _DocumentListTile extends StatelessWidget {
-  const _DocumentListTile({required this.document, required this.selected, required this.onTap});
+  const _DocumentListTile(
+      {required this.document, required this.selected, required this.onTap});
 
   final DocumentItem document;
   final bool selected;
@@ -1141,7 +1302,8 @@ class _DocumentListTile extends StatelessWidget {
             color: selected ? const Color(0xFF2E6E5B) : const Color(0xFF255144),
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: selected ? const Color(0xFFA9D6C3) : const Color(0xFF3B6F5D),
+              color:
+                  selected ? const Color(0xFFA9D6C3) : const Color(0xFF3B6F5D),
               width: 1.4,
             ),
             boxShadow: const [
@@ -1155,9 +1317,18 @@ class _DocumentListTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(document.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700, height: 1.2)),
+              Text(document.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      height: 1.2)),
               const SizedBox(height: 10),
-              Text(_formatTimestamp(document.updatedAt), style: const TextStyle(color: Color(0xFFD8ECE2), fontSize: 14)),
+              Text(_formatTimestamp(document.updatedAt),
+                  style:
+                      const TextStyle(color: Color(0xFFD8ECE2), fontSize: 14)),
             ],
           ),
         ),
@@ -1181,9 +1352,12 @@ class _EmptySidebarState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(color: const Color(0xFF214B3F), borderRadius: BorderRadius.circular(24)),
+      decoration: BoxDecoration(
+          color: const Color(0xFF214B3F),
+          borderRadius: BorderRadius.circular(24)),
       padding: const EdgeInsets.all(20),
-      child: const Text('No documents yet. Create one to get started.', style: TextStyle(color: Colors.white70)),
+      child: const Text('No documents yet. Create one to get started.',
+          style: TextStyle(color: Colors.white70)),
     );
   }
 }
@@ -1204,22 +1378,35 @@ class _EmptyDocumentState extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(28),
-            boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 22, offset: Offset(0, 12))],
+            boxShadow: const [
+              BoxShadow(
+                  color: Color(0x14000000),
+                  blurRadius: 22,
+                  offset: Offset(0, 12))
+            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('No document selected', style: Theme.of(context).textTheme.headlineSmall),
+              Text('No document selected',
+                  style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 10),
-              const Text('Create a new note or open the tools view to use utility features.'),
+              const Text(
+                  'Create a new note or open the tools view to use utility features.'),
               const SizedBox(height: 20),
               Wrap(
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  FilledButton.icon(onPressed: onCreate, icon: const Icon(Icons.add), label: const Text('New Document')),
-                  OutlinedButton.icon(onPressed: showTools, icon: const Icon(Icons.build_outlined), label: const Text('Open Tools')),
+                  FilledButton.icon(
+                      onPressed: onCreate,
+                      icon: const Icon(Icons.add),
+                      label: const Text('New Document')),
+                  OutlinedButton.icon(
+                      onPressed: showTools,
+                      icon: const Icon(Icons.build_outlined),
+                      label: const Text('Open Tools')),
                 ],
               ),
             ],
@@ -1254,9 +1441,18 @@ class _WorkspaceSegment extends StatelessWidget {
     return SegmentedButton<_WorkspaceView>(
       showSelectedIcon: true,
       segments: const [
-        ButtonSegment<_WorkspaceView>(value: _WorkspaceView.document, icon: Icon(Icons.check), label: Text('Document')),
-        ButtonSegment<_WorkspaceView>(value: _WorkspaceView.files, icon: Icon(Icons.folder_outlined), label: Text('Files')),
-        ButtonSegment<_WorkspaceView>(value: _WorkspaceView.tools, icon: Icon(Icons.handyman_outlined), label: Text('Tools')),
+        ButtonSegment<_WorkspaceView>(
+            value: _WorkspaceView.document,
+            icon: Icon(Icons.check),
+            label: Text('Document')),
+        ButtonSegment<_WorkspaceView>(
+            value: _WorkspaceView.files,
+            icon: Icon(Icons.folder_outlined),
+            label: Text('Files')),
+        ButtonSegment<_WorkspaceView>(
+            value: _WorkspaceView.tools,
+            icon: Icon(Icons.handyman_outlined),
+            label: Text('Tools')),
       ],
       selected: {value},
       onSelectionChanged: (selection) {
@@ -1279,8 +1475,12 @@ class _ModeSegment extends StatelessWidget {
     return SegmentedButton<bool>(
       showSelectedIcon: true,
       segments: const [
-        ButtonSegment<bool>(value: false, icon: Icon(Icons.edit_outlined), label: Text('Edit')),
-        ButtonSegment<bool>(value: true, icon: Icon(Icons.visibility_outlined), label: Text('Preview')),
+        ButtonSegment<bool>(
+            value: false, icon: Icon(Icons.edit_outlined), label: Text('Edit')),
+        ButtonSegment<bool>(
+            value: true,
+            icon: Icon(Icons.visibility_outlined),
+            label: Text('Preview')),
       ],
       selected: {previewMode},
       onSelectionChanged: (selection) {
@@ -1325,7 +1525,10 @@ class _MarkdownEditingController extends TextEditingController {
   );
 
   @override
-  TextSpan buildTextSpan({required BuildContext context, TextStyle? style, required bool withComposing}) {
+  TextSpan buildTextSpan(
+      {required BuildContext context,
+      TextStyle? style,
+      required bool withComposing}) {
     final effectiveStyle = _baseStyle.merge(style);
     final children = <InlineSpan>[];
     final lines = text.split('\n');
@@ -1338,24 +1541,38 @@ class _MarkdownEditingController extends TextEditingController {
 
       if (trimmedLeft.startsWith('```')) {
         inCodeBlock = !inCodeBlock;
-        lineChildren.add(TextSpan(text: line, style: effectiveStyle.merge(_codeStyle)));
+        lineChildren
+            .add(TextSpan(text: line, style: effectiveStyle.merge(_codeStyle)));
       } else if (inCodeBlock) {
-        lineChildren.add(TextSpan(text: line, style: effectiveStyle.merge(_codeStyle)));
+        lineChildren
+            .add(TextSpan(text: line, style: effectiveStyle.merge(_codeStyle)));
       } else {
         final headingMatch = RegExp(r'^(#{1,6})(\s+)(.*)$').firstMatch(line);
         final quoteMatch = RegExp(r'^(\s*>\s?)(.*)$').firstMatch(line);
-        final listMatch = RegExp(r'^(\s*(?:[-*+] |\d+\. ))(.*)$').firstMatch(line);
+        final listMatch =
+            RegExp(r'^(\s*(?:[-*+] |\d+\. ))(.*)$').firstMatch(line);
 
         if (headingMatch != null) {
-          lineChildren.add(TextSpan(text: headingMatch.group(1), style: effectiveStyle.merge(_syntaxStyle)));
-          lineChildren.add(TextSpan(text: headingMatch.group(2), style: effectiveStyle));
-          lineChildren.add(TextSpan(text: headingMatch.group(3), style: effectiveStyle.merge(_headingStyle)));
+          lineChildren.add(TextSpan(
+              text: headingMatch.group(1),
+              style: effectiveStyle.merge(_syntaxStyle)));
+          lineChildren.add(
+              TextSpan(text: headingMatch.group(2), style: effectiveStyle));
+          lineChildren.add(TextSpan(
+              text: headingMatch.group(3),
+              style: effectiveStyle.merge(_headingStyle)));
         } else if (quoteMatch != null) {
-          lineChildren.add(TextSpan(text: quoteMatch.group(1), style: effectiveStyle.merge(_syntaxStyle)));
-          _appendInlineMarkdown(lineChildren, quoteMatch.group(2) ?? '', effectiveStyle.merge(_quoteStyle));
+          lineChildren.add(TextSpan(
+              text: quoteMatch.group(1),
+              style: effectiveStyle.merge(_syntaxStyle)));
+          _appendInlineMarkdown(lineChildren, quoteMatch.group(2) ?? '',
+              effectiveStyle.merge(_quoteStyle));
         } else if (listMatch != null) {
-          lineChildren.add(TextSpan(text: listMatch.group(1), style: effectiveStyle.merge(_syntaxStyle)));
-          _appendInlineMarkdown(lineChildren, listMatch.group(2) ?? '', effectiveStyle);
+          lineChildren.add(TextSpan(
+              text: listMatch.group(1),
+              style: effectiveStyle.merge(_syntaxStyle)));
+          _appendInlineMarkdown(
+              lineChildren, listMatch.group(2) ?? '', effectiveStyle);
         } else {
           _appendInlineMarkdown(lineChildren, line, effectiveStyle);
         }
@@ -1370,7 +1587,8 @@ class _MarkdownEditingController extends TextEditingController {
     return TextSpan(style: effectiveStyle, children: children);
   }
 
-  void _appendInlineMarkdown(List<InlineSpan> spans, String source, TextStyle baseStyle) {
+  void _appendInlineMarkdown(
+      List<InlineSpan> spans, String source, TextStyle baseStyle) {
     final pattern = RegExp(
       r'(\!\[[^\]]*\]\([^\)]+\)|\[[^\]]+\]\([^\)]+\)|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_)',
     );
@@ -1378,7 +1596,8 @@ class _MarkdownEditingController extends TextEditingController {
 
     for (final match in pattern.allMatches(source)) {
       if (match.start > current) {
-        spans.add(TextSpan(text: source.substring(current, match.start), style: baseStyle));
+        spans.add(TextSpan(
+            text: source.substring(current, match.start), style: baseStyle));
       }
       final token = match.group(0)!;
       if (token.startsWith('![') || token.startsWith('[')) {
@@ -1386,7 +1605,8 @@ class _MarkdownEditingController extends TextEditingController {
       } else if (token.startsWith('`')) {
         spans.add(TextSpan(text: token, style: baseStyle.merge(_codeStyle)));
       } else {
-        spans.add(TextSpan(text: token, style: baseStyle.merge(_emphasisStyle)));
+        spans
+            .add(TextSpan(text: token, style: baseStyle.merge(_emphasisStyle)));
       }
       current = match.end;
     }
@@ -1409,7 +1629,10 @@ class _EditorSurface extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(32),
-        boxShadow: const [BoxShadow(color: Color(0x11000000), blurRadius: 24, offset: Offset(0, 14))],
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x11000000), blurRadius: 24, offset: Offset(0, 14))
+        ],
       ),
       child: TextField(
         controller: controller,
@@ -1419,14 +1642,18 @@ class _EditorSurface extends StatelessWidget {
         minLines: null,
         keyboardType: TextInputType.multiline,
         textAlignVertical: TextAlignVertical.top,
-        decoration: const InputDecoration(border: InputBorder.none, contentPadding: EdgeInsets.all(28), hintText: 'Start writing here...'),
+        decoration: const InputDecoration(
+            border: InputBorder.none,
+            contentPadding: EdgeInsets.all(28),
+            hintText: 'Start writing here...'),
       ),
     );
   }
 }
 
 class _MarkdownPreview extends StatelessWidget {
-  const _MarkdownPreview({required this.document, required this.assetBytesForPath});
+  const _MarkdownPreview(
+      {required this.document, required this.assetBytesForPath});
 
   final DocumentItem document;
   final Uint8List? Function(String path) assetBytesForPath;
@@ -1437,24 +1664,28 @@ class _MarkdownPreview extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(32),
-        boxShadow: const [BoxShadow(color: Color(0x11000000), blurRadius: 24, offset: Offset(0, 14))],
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x11000000), blurRadius: 24, offset: Offset(0, 14))
+        ],
       ),
       child: SelectionArea(
         child: Markdown(
           data: document.content,
           padding: const EdgeInsets.all(28),
           sizedImageBuilder: (config) {
-          final bytes = assetBytesForPath(config.uri.toString());
-          if (bytes == null) {
-            return _MissingAssetBox(label: config.alt ?? config.uri.toString());
-          }
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: Image.memory(bytes, fit: BoxFit.contain),
-            ),
-          );
+            final bytes = assetBytesForPath(config.uri.toString());
+            if (bytes == null) {
+              return _MissingAssetBox(
+                  label: config.alt ?? config.uri.toString());
+            }
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Image.memory(bytes, fit: BoxFit.contain),
+              ),
+            );
           },
         ),
       ),
@@ -1520,28 +1751,37 @@ class _AssetLibraryView extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(30),
-          boxShadow: const [BoxShadow(color: Color(0x11000000), blurRadius: 24, offset: Offset(0, 14))],
+          boxShadow: const [
+            BoxShadow(
+                color: Color(0x11000000), blurRadius: 24, offset: Offset(0, 14))
+          ],
         ),
         padding: const EdgeInsets.all(28),
         child: const Align(
           alignment: Alignment.topLeft,
-          child: Text('No uploaded files yet. You can upload images or any binary file under 10MB.'),
+          child: Text(
+              'No uploaded files yet. You can upload images or any binary file under 10MB.'),
         ),
       );
     }
 
-    final sortedAssets = [...assets]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final sortedAssets = [...assets]
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(30),
-        boxShadow: const [BoxShadow(color: Color(0x11000000), blurRadius: 24, offset: Offset(0, 14))],
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x11000000), blurRadius: 24, offset: Offset(0, 14))
+        ],
       ),
       padding: const EdgeInsets.fromLTRB(28, 24, 28, 28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('All Uploaded Files', style: Theme.of(context).textTheme.headlineSmall),
+          Text('All Uploaded Files',
+              style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
           const Text(
             'Any file under 10MB can be stored as binary data. Duplicate file names are auto-renamed with -2, -3 and so on.',
@@ -1555,8 +1795,13 @@ class _AssetLibraryView extends StatelessWidget {
               itemBuilder: (context, index) {
                 final asset = sortedAssets[index];
                 final referenceCount = referenceCountForPath(asset.path);
-                final usedHere = selectedDocument?.assetRefs.contains(asset.path) ?? false;
-                final status = usedHere ? 'Used Here' : (referenceCount == 0 ? 'Unused' : 'Used in Other Documents');
+                final usedHere =
+                    selectedDocument?.assetRefs.contains(asset.path) ?? false;
+                final status = usedHere
+                    ? 'Used Here'
+                    : (referenceCount == 0
+                        ? 'Unused'
+                        : 'Used in Other Documents');
                 return _AssetTile(
                   asset: asset,
                   displayName: assetDisplayName(asset),
@@ -1566,7 +1811,8 @@ class _AssetLibraryView extends StatelessWidget {
                   onPreview: () => onPreviewAsset(asset),
                   onCopyMarkdown: () => onCopyMarkdownReference(asset),
                   onDownload: () => onDownloadAsset(asset),
-                  onRemoveCurrentReference: usedHere ? () => onRemoveCurrentReference(asset) : null,
+                  onRemoveCurrentReference:
+                      usedHere ? () => onRemoveCurrentReference(asset) : null,
                   onDelete: () => onDeleteAsset(asset),
                 );
               },
@@ -1619,7 +1865,9 @@ class _AssetTile extends StatelessWidget {
             child: SizedBox(
               width: 72,
               height: 72,
-              child: isImage ? Image.memory(asset.bytes, fit: BoxFit.cover) : const _AssetThumbnailFallback(),
+              child: isImage
+                  ? Image.memory(asset.bytes, fit: BoxFit.cover)
+                  : const _AssetThumbnailFallback(),
             ),
           ),
           const SizedBox(width: 16),
@@ -1627,9 +1875,14 @@ class _AssetTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(displayName, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                Text(displayName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 6),
-                Text(asset.path, style: const TextStyle(color: Color(0xFF5F665D))),
+                Text(asset.path,
+                    style: const TextStyle(color: Color(0xFF5F665D))),
                 const SizedBox(height: 6),
                 Wrap(
                   spacing: 10,
@@ -1648,13 +1901,21 @@ class _AssetTile extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              IconButton.outlined(onPressed: onPreview, icon: const Icon(Icons.open_in_full)),
-              IconButton.outlined(onPressed: onCopyMarkdown, icon: const Icon(Icons.content_copy_outlined)),
-              IconButton.outlined(onPressed: onDownload, icon: const Icon(Icons.download_outlined)),
-              IconButton.outlined(onPressed: onRemoveCurrentReference, icon: const Icon(Icons.link_off_outlined)),
+              IconButton.outlined(
+                  onPressed: onPreview, icon: const Icon(Icons.open_in_full)),
+              IconButton.outlined(
+                  onPressed: onCopyMarkdown,
+                  icon: const Icon(Icons.content_copy_outlined)),
+              IconButton.outlined(
+                  onPressed: onDownload,
+                  icon: const Icon(Icons.download_outlined)),
+              IconButton.outlined(
+                  onPressed: onRemoveCurrentReference,
+                  icon: const Icon(Icons.link_off_outlined)),
               IconButton.outlined(
                 onPressed: onDelete,
-                style: IconButton.styleFrom(foregroundColor: const Color(0xFFA52D2D)),
+                style: IconButton.styleFrom(
+                    foregroundColor: const Color(0xFFA52D2D)),
                 icon: const Icon(Icons.delete_outline),
               ),
             ],
@@ -1672,7 +1933,8 @@ class _AssetThumbnailFallback extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: const Color(0xFFE6E0D3),
-      child: const Icon(Icons.insert_drive_file_outlined, color: Color(0xFF6A6A66)),
+      child: const Icon(Icons.insert_drive_file_outlined,
+          color: Color(0xFF6A6A66)),
     );
   }
 }
@@ -1686,8 +1948,11 @@ class _MetaChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: const Color(0xFFE2ECDF), borderRadius: BorderRadius.circular(999)),
-      child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+      decoration: BoxDecoration(
+          color: const Color(0xFFE2ECDF),
+          borderRadius: BorderRadius.circular(999)),
+      child: Text(label,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
     );
   }
 }
@@ -1700,7 +1965,8 @@ class _PasswordGeneratorCard extends StatefulWidget {
 }
 
 class _PasswordGeneratorCardState extends State<_PasswordGeneratorCard> {
-  static const String _alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#%^&*()-_=+[]{}';
+  static const String _alphabet =
+      'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#%^&*()-_=+[]{}';
   final Random _random = Random.secure();
   late int _length;
   late String _password;
@@ -1713,7 +1979,8 @@ class _PasswordGeneratorCardState extends State<_PasswordGeneratorCard> {
   }
 
   String _generate(int length) {
-    return List.generate(length, (_) => _alphabet[_random.nextInt(_alphabet.length)]).join();
+    return List.generate(
+        length, (_) => _alphabet[_random.nextInt(_alphabet.length)]).join();
   }
 
   void _regenerate() {
@@ -1725,7 +1992,8 @@ class _PasswordGeneratorCardState extends State<_PasswordGeneratorCard> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password copied.')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Password copied.')));
   }
 
   @override
@@ -1739,30 +2007,42 @@ class _PasswordGeneratorCardState extends State<_PasswordGeneratorCard> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(30),
           border: Border.all(color: const Color(0xFFDDD4C2)),
-          boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 24, offset: Offset(0, 12))],
+          boxShadow: const [
+            BoxShadow(
+                color: Color(0x14000000), blurRadius: 24, offset: Offset(0, 12))
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Random Password', style: Theme.of(context).textTheme.headlineSmall),
+            Text('随机密码生成器', style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 10),
-            const Text('Generate a strong random password and copy it for later use.', style: TextStyle(color: Color(0xFF5F665D))),
+            const Text(
+                'Generate a strong random password and copy it for later use.',
+                style: TextStyle(color: Color(0xFF5F665D))),
             const SizedBox(height: 22),
             Expanded(
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(color: const Color(0xFFF5F1E8), borderRadius: BorderRadius.circular(22)),
+                decoration: BoxDecoration(
+                    color: const Color(0xFFF5F1E8),
+                    borderRadius: BorderRadius.circular(22)),
                 child: SelectableText(
                   _password,
-                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, letterSpacing: 0.6, height: 1.45),
+                  style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.6,
+                      height: 1.45),
                 ),
               ),
             ),
             const SizedBox(height: 18),
             Row(
               children: [
-                Text('Length: $_length', style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text('Length: $_length',
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
                 Expanded(
                   child: Slider(
                     value: _length.toDouble(),
@@ -1783,9 +2063,15 @@ class _PasswordGeneratorCardState extends State<_PasswordGeneratorCard> {
             const SizedBox(height: 6),
             Row(
               children: [
-                FilledButton.icon(onPressed: _regenerate, icon: const Icon(Icons.autorenew), label: const Text('Regenerate')),
+                FilledButton.icon(
+                    onPressed: _regenerate,
+                    icon: const Icon(Icons.autorenew),
+                    label: const Text('Regenerate')),
                 const SizedBox(width: 12),
-                OutlinedButton.icon(onPressed: _copyPassword, icon: const Icon(Icons.content_copy_outlined), label: const Text('Copy')),
+                OutlinedButton.icon(
+                    onPressed: _copyPassword,
+                    icon: const Icon(Icons.content_copy_outlined),
+                    label: const Text('Copy')),
               ],
             ),
           ],

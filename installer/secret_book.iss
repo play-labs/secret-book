@@ -1,5 +1,5 @@
 #define AppName "Secret Book"
-#define AppVersion "0.1.0"
+#define AppVersion "0.1.3"
 #define AppPublisher "play-labs"
 #define AppExeName "secret_book.exe"
 #define AppId "{{8C6A6E59-5E94-4AC0-9A4A-0A1B8E0E5F13}"
@@ -24,6 +24,8 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 UninstallDisplayIcon={app}\{#AppExeName}
+CloseApplications=yes
+RestartApplications=no
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

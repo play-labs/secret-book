@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "app": "secret_book",
+  "platform": "windows",
+  "version": "0.1.1",
+  "build": 2,
+  "publishedAt": "2026-04-10T12:00:00Z",
+  "mandatory": false,
+  "downloadUrl": "https://example.com/downloads/secret_book_setup_0.1.1.exe",
+  "notes": [
+    "????????????",
+    "?????????????"
+  ]
+}

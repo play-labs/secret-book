@@ -22,6 +22,10 @@ abstract class SyncService {
 
   Future<bool> pullRemoteToLocal();
 
+  Future<SyncStatusSnapshot> overwriteRemoteWithLocal({
+    required int localRevision,
+  });
+
   Future<String> getRemoteBundlePath();
 
   Future<String> testStsConnection();
@@ -201,6 +205,48 @@ class AliyunOssSyncService implements SyncService {
     );
     await _configStore.write(next);
     return true;
+  }
+
+  @override
+  Future<SyncStatusSnapshot> overwriteRemoteWithLocal({
+    required int localRevision,
+  }) async {
+    final config = await _configStore.read();
+    final validationError = _validateConfig(config);
+    if (validationError != null) {
+      final next = config.copyWith(
+        syncState: SyncState.error,
+        syncMessage: validationError,
+      );
+      await _configStore.write(next);
+      return SyncStatusSnapshot.fromConfig(next, localRevision: localRevision);
+    }
+
+    final localBundle = await _fileStore.readBundle();
+    if (localBundle == null) {
+      final next = config.copyWith(
+        syncState: SyncState.error,
+        syncMessage: 'Local vault.bundle is missing',
+      );
+      await _configStore.write(next);
+      return SyncStatusSnapshot.fromConfig(next, localRevision: localRevision);
+    }
+
+    final client = await _buildClient(config);
+    final objectKey = _buildUserObjectKey(config);
+    await _backupRemoteBundleIfPresent(client, config, objectKey);
+    await client.putObject(localBundle, objectKey);
+
+    final next = config.copyWith(
+      syncProvider: SyncProvider.aliyunOss,
+      lastSyncedRevision: localRevision,
+      lastRemoteRevision: localRevision,
+      lastSyncAt: DateTime.now().toUtc(),
+      syncState: SyncState.synced,
+      syncMessage: 'Local vault overwrote remote encrypted bundle',
+    );
+    await _configStore.write(next);
+    return SyncStatusSnapshot.fromConfig(next, localRevision: localRevision);
   }
 
   Future<int?> _readRemoteRevision() async {
@@ -539,6 +585,33 @@ class MockOssSyncService implements SyncService {
     );
     await _configStore.write(next);
     return true;
+  }
+
+  @override
+  Future<SyncStatusSnapshot> overwriteRemoteWithLocal({
+    required int localRevision,
+  }) async {
+    final localBundle = await _fileStore.readBundle();
+    final config = await _configStore.read();
+    if (localBundle == null) {
+      final next = config.copyWith(
+        syncState: SyncState.error,
+        syncMessage: 'Local vault.bundle is missing',
+      );
+      await _configStore.write(next);
+      return SyncStatusSnapshot.fromConfig(next, localRevision: localRevision);
+    }
+
+    await _fileStore.writeRemoteBundle(localBundle);
+    final next = config.copyWith(
+      lastSyncedRevision: localRevision,
+      lastRemoteRevision: localRevision,
+      lastSyncAt: DateTime.now().toUtc(),
+      syncState: SyncState.synced,
+      syncMessage: 'Local vault overwrote mock remote bundle',
+    );
+    await _configStore.write(next);
+    return SyncStatusSnapshot.fromConfig(next, localRevision: localRevision);
   }
 
   int? _readRevision(List<int>? bundleBytes) {
