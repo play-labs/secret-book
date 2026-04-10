@@ -1,5 +1,11 @@
 # Secret Book
 
+[![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?logo=flutter&logoColor=white)](https://flutter.dev/)
+[![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows&logoColor=white)](https://www.microsoft.com/windows)
+[![Version](https://img.shields.io/badge/Version-0.1.0-2F855A)](./pubspec.yaml)
+[![Status](https://img.shields.io/badge/Status-Prototype-F6AD55)](./PROJECT.md)
+[![Crypto](https://img.shields.io/badge/Crypto-Argon2id%20%2B%20XChaCha20--Poly1305-6B46C1)](./docs/architecture.md)
+
 个人加密文档管理应用的 Flutter Windows 桌面原型。
 
 ## 当前实现
