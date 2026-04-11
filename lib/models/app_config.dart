@@ -1,3 +1,5 @@
+import 'encryption_profile.dart';
+
 enum SyncProvider {
   aliyunOss,
   mockOss,
@@ -21,6 +23,7 @@ enum SyncState {
 class AppConfig {
   const AppConfig({
     required this.syncProvider,
+    required this.encryptionProfile,
     required this.ossEndpoint,
     required this.ossBucketName,
     required this.ossObjectKey,
@@ -39,6 +42,7 @@ class AppConfig {
   });
 
   final SyncProvider syncProvider;
+  final EncryptionProfile encryptionProfile;
   final String ossEndpoint;
   final String ossBucketName;
   final String ossObjectKey;
@@ -58,6 +62,7 @@ class AppConfig {
   factory AppConfig.initial() {
     return const AppConfig(
       syncProvider: SyncProvider.aliyunOss,
+      encryptionProfile: EncryptionProfile.standard,
       ossEndpoint: 'oss-cn-example.aliyuncs.com',
       ossBucketName: 'example-secret-book',
       ossObjectKey: 'vault.bundle',
@@ -67,8 +72,7 @@ class AppConfig {
           '{"Content-Type":"application/json","X-Auth-Token":"replace-me"}',
       stsBodyJson:
           '{"role_session_name":"example-session","duration_seconds":1800}',
-      appUpdateJsonUrl:
-          'https://example.com/secret-book/version.json',
+      appUpdateJsonUrl: 'https://example.com/secret-book/version.json',
       autosaveDelaySeconds: 15,
       remoteSyncIntervalSeconds: 60,
       lastSyncedRevision: null,
@@ -81,6 +85,7 @@ class AppConfig {
 
   AppConfig copyWith({
     SyncProvider? syncProvider,
+    EncryptionProfile? encryptionProfile,
     String? ossEndpoint,
     String? ossBucketName,
     String? ossObjectKey,
@@ -102,6 +107,7 @@ class AppConfig {
   }) {
     return AppConfig(
       syncProvider: syncProvider ?? this.syncProvider,
+      encryptionProfile: encryptionProfile ?? this.encryptionProfile,
       ossEndpoint: ossEndpoint ?? this.ossEndpoint,
       ossBucketName: ossBucketName ?? this.ossBucketName,
       ossObjectKey: ossObjectKey ?? this.ossObjectKey,
@@ -128,6 +134,7 @@ class AppConfig {
   Map<String, dynamic> toMap() {
     return {
       'syncProvider': syncProvider.name,
+      'encryptionProfile': encryptionProfile.name,
       'ossEndpoint': ossEndpoint,
       'ossBucketName': ossBucketName,
       'ossObjectKey': ossObjectKey,
@@ -159,11 +166,15 @@ class AppConfig {
         : rawSyncInterval is String
             ? int.tryParse(rawSyncInterval)
             : null;
+    final rawEncryptionProfile = map['encryptionProfile'] as String?;
 
     return AppConfig(
       syncProvider: SyncProvider.values.byName(
         map['syncProvider'] as String? ?? SyncProvider.aliyunOss.name,
       ),
+      encryptionProfile: rawEncryptionProfile == null || rawEncryptionProfile.isEmpty
+          ? EncryptionProfile.standard
+          : EncryptionProfile.values.byName(rawEncryptionProfile),
       ossEndpoint:
           map['ossEndpoint'] as String? ?? 'oss-cn-example.aliyuncs.com',
       ossBucketName: map['ossBucketName'] as String? ?? 'example-secret-book',
@@ -177,10 +188,7 @@ class AppConfig {
           '{"Content-Type":"application/json","X-Auth-Token":"replace-me"}',
       stsBodyJson: map['stsBodyJson'] as String? ??
           '{"role_session_name":"example-session","duration_seconds":1800}',
-      appUpdateJsonUrl: ((map['appUpdateJsonUrl'] as String?)
-                  ?.trim()
-                  .isNotEmpty ??
-              false)
+      appUpdateJsonUrl: ((map['appUpdateJsonUrl'] as String?)?.trim().isNotEmpty ?? false)
           ? (map['appUpdateJsonUrl'] as String).trim()
           : 'https://example.com/secret-book/version.json',
       autosaveDelaySeconds:

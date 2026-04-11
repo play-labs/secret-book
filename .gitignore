@@ -49,3 +49,4 @@ app.*.map.json
 dist/
 flutter_01.log
 config.json
+config.toml

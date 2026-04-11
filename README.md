@@ -45,7 +45,7 @@
 
 ### 主密码
 
-* 主密码不会写入 `config.json`
+* 主密码不会写入 `config.toml`
 * 首次创建保险库时，输入的主密码直接作为加密口令
 * 之后解锁、保存、改密码都基于该主密码
 * 安全性仍然主要依赖主密码强度
@@ -125,7 +125,7 @@ assets/<asset-name>
 本地与远端都按用户名隔离：
 
 * 本地：`{appData}/secret_book/<username>/vault.bundle`
-* 本地：`{appData}/secret_book/<username>/config.json`
+* 本地：`{appData}/secret_book/<username>/config.toml`
 * OSS：`{username}/vault.bundle`
 * OSS 备份：`{username}/backup/vault.bundle.TIMESTAMP`
 
@@ -158,7 +158,7 @@ dist/secret_book-windows-release/
 
 ## Version Updates
 
-The app can check for new releases from a remote `version.json`. Configure the JSON URL in the user's `config.json` through the `appUpdateJsonUrl` field.
+The app can check for new releases from a remote `version.json`. Configure the JSON URL in the user's `config.toml` through the `appUpdateJsonUrl` field.
 
 Recommended `version.json` structure:
 

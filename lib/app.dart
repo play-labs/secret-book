@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:cryptography_plus/cryptography_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -9,6 +10,7 @@ import 'app_metadata.dart';
 import 'models/app_config.dart';
 import 'models/app_release_info.dart';
 import 'models/document_vault.dart';
+import 'models/encryption_profile.dart';
 import 'models/sync_status.dart';
 import 'pages/create_password_page.dart';
 import 'pages/home_page.dart';
@@ -36,11 +38,13 @@ enum _ConflictChoice { local, remote, later }
 const MethodChannel _windowChannel = MethodChannel('secret_book/window');
 
 class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserver {
-  late final VaultRepository repository;
+  late VaultRepository repository;
   late final VaultFileStore fileStore;
   late final AppConfigStore configStore;
   late final SyncService syncService;
   late final AppUpdateService updateService;
+  late final JsonBundleSerializer _bundleSerializer;
+  late final VaultPacker _vaultPacker;
 
   VaultController? _controller;
   String? _activeUsername;
@@ -48,6 +52,8 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
   String? _bundlePath;
   String? _remoteBundlePath;
   bool? _hasExistingBundle;
+  AppConfig? _appConfig;
+  VaultKdfSettings? _bundleKdfSettings;
   bool _isPreparingUser = false;
   Timer? _remoteSyncTimer;
   Timer? _updateCheckTimer;
@@ -75,12 +81,9 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
     super.initState();
     fileStore = VaultFileStore();
     configStore = AppConfigStore(fileStore: fileStore);
-    repository = LocalVaultRepository(
-      serializer: JsonBundleSerializer(),
-      vaultPacker: VaultPacker(),
-      fileStore: fileStore,
-      cryptoService: CryptoService(),
-    );
+    _bundleSerializer = JsonBundleSerializer();
+    _vaultPacker = VaultPacker();
+    repository = _createRepository();
     syncService = AliyunOssSyncService(
       fileStore: fileStore,
       serializer: JsonBundleSerializer(),
@@ -101,6 +104,27 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
   }
 
   bool _isHandlingAppExit = false;
+
+  VaultRepository _createRepository() {
+    return LocalVaultRepository(
+      serializer: _bundleSerializer,
+      vaultPacker: _vaultPacker,
+      fileStore: fileStore,
+      cryptoServiceBuilder: _buildCryptoService,
+    );
+  }
+
+  CryptoService _buildCryptoService() {
+    final profile = _appConfig?.encryptionProfile ?? EncryptionProfile.standard;
+    return CryptoService(
+      kdf: Argon2id(
+        memory: profile.memoryKiB,
+        iterations: profile.iterations,
+        parallelism: profile.parallelism,
+        hashLength: 32,
+      ),
+    );
+  }
 
   @override
   Future<ui.AppExitResponse> didRequestAppExit() async {
@@ -160,7 +184,18 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
 
     try {
       fileStore.setActiveUsername(username);
-      await configStore.read();
+      var config = await configStore.read();
+      var bundleKdfSettings = await repository.inspectBundleKdfSettings();
+      final matchedProfile = bundleKdfSettings == null
+          ? null
+          : EncryptionProfile.fromSettings(bundleKdfSettings);
+      if (matchedProfile != null && matchedProfile != config.encryptionProfile) {
+        config = config.copyWith(encryptionProfile: matchedProfile);
+        await configStore.write(config);
+      }
+      _appConfig = config;
+      repository = _createRepository();
+      bundleKdfSettings ??= await repository.inspectBundleKdfSettings();
       final bundlePath = await repository.getBundlePath();
       final hasBundle = await fileStore.bundleExists();
       final remotePath = await syncService.getRemoteBundlePath();
@@ -180,6 +215,8 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
         _isPreparingUser = false;
         _suspendAutoSyncForConflict = false;
         _isConflictDialogActive = false;
+        _appConfig = config;
+        _bundleKdfSettings = bundleKdfSettings;
       });
     } catch (_) {
       fileStore.clearActiveUsername();
@@ -197,6 +234,7 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
       _hasExistingBundle = true;
       _suspendAutoSyncForConflict = false;
       _isConflictDialogActive = false;
+      _bundleKdfSettings = repository.currentKdfSettings;
     });
     await _restartRemoteSyncTimer();
     _restartUpdateCheckTimer();
@@ -236,6 +274,7 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
     _replaceController(nextController);
     setState(() {
       _masterPassword = newPassword;
+      _bundleKdfSettings = repository.currentKdfSettings;
     });
     await _restartRemoteSyncTimer();
   }
@@ -251,6 +290,7 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
       _availableUpdate = null;
       _latestRelease = null;
       _downloadedInstallerPath = null;
+      _bundleKdfSettings = null;
       _isCheckingUpdates = false;
       _isDownloadingUpdate = false;
     });
@@ -269,6 +309,8 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
       _hasExistingBundle = null;
       _isPreparingUser = false;
       _suspendAutoSyncForConflict = false;
+      _appConfig = null;
+      _bundleKdfSettings = null;
       _isConflictDialogActive = false;
       _availableUpdate = null;
       _latestRelease = null;
@@ -438,7 +480,7 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
       if (!silent) {
         await _showMessageDialog(
           title: 'Check update failed',
-          message: '$error\n\nConfigure appUpdateJsonUrl in config.json before using this feature.',
+          message: '$error\n\nConfigure appUpdateJsonUrl in config.toml before using this feature.',
         );
       }
     } finally {
@@ -641,13 +683,33 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
     }
   }
 
+  Future<void> _changeEncryptionProfile(EncryptionProfile profile) async {
+    final current = _appConfig ?? await configStore.read();
+    final next = current.copyWith(encryptionProfile: profile);
+    await configStore.write(next);
+    repository = _createRepository();
+    if (!mounted) {
+      _appConfig = next;
+      return;
+    }
+    setState(() {
+      _appConfig = next;
+    });
+  }
+
   VaultController _buildController({
     required DocumentVault vault,
     required String password,
   }) {
     return VaultController(
       initialVault: vault,
-      onPersist: (nextVault) => repository.save(nextVault, password),
+      onPersist: (nextVault) async {
+        await repository.save(nextVault, password);
+        _bundleKdfSettings = repository.currentKdfSettings;
+        if (mounted) {
+          setState(() {});
+        }
+      },
       onSyncAfterSave: (localRevision) => syncService.syncAfterLocalSave(
         localRevision: localRevision,
       ),
@@ -717,6 +779,14 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
                       masterPasswordLabel: _masterPassword == null
                           ? 'Locked'
                           : 'Unlocked (${_masterPassword!.length} chars)',
+                      autosaveDelaySeconds:
+                          _appConfig?.autosaveDelaySeconds ?? 15,
+                      selectedEncryptionProfile:
+                          _appConfig?.encryptionProfile ?? EncryptionProfile.standard,
+                      currentVaultKdfLabel:
+                          (_bundleKdfSettings ?? (_appConfig?.encryptionProfile ?? EncryptionProfile.standard).settings)
+                              .technicalLabel,
+                      onChangeEncryptionProfile: _changeEncryptionProfile,
                       onLock: _lock,
                       onChangePassword: _changePassword,
                       onInstallDownloadedUpdate: _installDownloadedUpdate,

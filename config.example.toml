@@ -1,0 +1,27 @@
+# Secret Book local configuration
+# Fill in your real values locally. Do not commit this file.
+
+[app]
+sync_provider = "aliyunOss"
+encryption_profile = "standard"
+app_update_json_url = "https://example.com/secret-book/version.json"
+autosave_delay_seconds = 15
+remote_sync_interval_seconds = 60
+
+[oss]
+endpoint = "oss-cn-example.aliyuncs.com"
+bucket_name = "example-secret-book"
+object_key = "vault.bundle"
+
+[sts]
+api_url = "https://example.com/api/v1/sts/assume-role"
+http_method = "post"
+headers_json = "{"Content-Type":"application/json","X-Auth-Token":"replace-me"}"
+body_json = "{"role_session_name":"example-session","duration_seconds":1800}"
+
+[sync]
+last_synced_revision = null
+last_remote_revision = null
+last_sync_at = null
+state = "idle"
+message = "Ready"

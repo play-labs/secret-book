@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:cryptography_plus/cryptography_plus.dart';
 
+import '../models/encryption_profile.dart';
+
 class VaultEncryptionEnvelope {
   const VaultEncryptionEnvelope({
     required this.version,
@@ -73,7 +75,7 @@ class CryptoService {
     Cipher? cipher,
   })  : _kdf = kdf ??
             Argon2id(
-              memory: 65536,
+              memory: 131072,
               iterations: 3,
               parallelism: 1,
               hashLength: 32,
@@ -83,16 +85,36 @@ class CryptoService {
   final Argon2id _kdf;
   final Cipher _cipher;
 
+  VaultKdfSettings get kdfSettings => VaultKdfSettings(
+        memoryKiB: _kdf.memory,
+        iterations: _kdf.iterations,
+        parallelism: _kdf.parallelism,
+      );
+
   Future<VaultEncryptionEnvelope> encrypt({
     required String password,
     required Uint8List plainBytes,
     required int revision,
   }) async {
     final salt = Uint8List.fromList(List<int>.generate(16, (_) => _randomByte()));
-    final secretKey = await _deriveKey(password: password, salt: salt);
+    final secretKey = await _deriveKey(
+      password: password,
+      salt: salt,
+      memory: _kdf.memory,
+      iterations: _kdf.iterations,
+      parallelism: _kdf.parallelism,
+    );
     final nonce = Uint8List.fromList(List<int>.generate(24, (_) => _randomByte()));
     final savedAt = DateTime.now().toUtc();
-    final aad = utf8.encode(_buildAssociatedData(revision: revision, savedAt: savedAt));
+    final aad = utf8.encode(
+      _buildAssociatedData(
+        revision: revision,
+        savedAt: savedAt,
+        kdfMemory: _kdf.memory,
+        kdfIterations: _kdf.iterations,
+        kdfParallelism: _kdf.parallelism,
+      ),
+    );
     final secretBox = await _cipher.encrypt(
       plainBytes,
       secretKey: secretKey,
@@ -118,11 +140,20 @@ class CryptoService {
     required String password,
     required VaultEncryptionEnvelope envelope,
   }) async {
-    final secretKey = await _deriveKey(password: password, salt: envelope.salt);
+    final secretKey = await _deriveKey(
+      password: password,
+      salt: envelope.salt,
+      memory: envelope.kdfMemory,
+      iterations: envelope.kdfIterations,
+      parallelism: envelope.kdfParallelism,
+    );
     final aad = utf8.encode(
       _buildAssociatedData(
         revision: envelope.revision,
         savedAt: envelope.savedAt,
+        kdfMemory: envelope.kdfMemory,
+        kdfIterations: envelope.kdfIterations,
+        kdfParallelism: envelope.kdfParallelism,
       ),
     );
     final secretBox = SecretBox(
@@ -141,8 +172,16 @@ class CryptoService {
   Future<SecretKey> _deriveKey({
     required String password,
     required Uint8List salt,
+    required int memory,
+    required int iterations,
+    required int parallelism,
   }) {
-    return _kdf.deriveKeyFromPassword(
+    return Argon2id(
+      memory: memory,
+      iterations: iterations,
+      parallelism: parallelism,
+      hashLength: 32,
+    ).deriveKeyFromPassword(
       password: password,
       nonce: salt,
     );
@@ -151,6 +190,9 @@ class CryptoService {
   String _buildAssociatedData({
     required int revision,
     required DateTime savedAt,
+    required int kdfMemory,
+    required int kdfIterations,
+    required int kdfParallelism,
   }) {
     return jsonEncode({
       'version': 1,
@@ -158,9 +200,9 @@ class CryptoService {
       'savedAt': savedAt.toIso8601String(),
       'kdf': {
         'name': 'argon2id',
-        'memory': _kdf.memory,
-        'iterations': _kdf.iterations,
-        'parallelism': _kdf.parallelism,
+        'memory': kdfMemory,
+        'iterations': kdfIterations,
+        'parallelism': kdfParallelism,
       },
       'cipher': 'xchacha20poly1305',
     });

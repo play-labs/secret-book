@@ -11,6 +11,7 @@ import 'package:super_clipboard/super_clipboard.dart';
 
 import '../models/asset.dart';
 import '../models/document.dart';
+import '../models/encryption_profile.dart';
 import '../state/vault_controller.dart';
 
 class HomePage extends StatefulWidget {
@@ -21,6 +22,10 @@ class HomePage extends StatefulWidget {
     required this.bundlePath,
     required this.remoteBundlePath,
     required this.masterPasswordLabel,
+    required this.autosaveDelaySeconds,
+    required this.selectedEncryptionProfile,
+    required this.currentVaultKdfLabel,
+    required this.onChangeEncryptionProfile,
     required this.onLock,
     required this.onChangePassword,
     required this.onInstallDownloadedUpdate,
@@ -33,6 +38,10 @@ class HomePage extends StatefulWidget {
   final String bundlePath;
   final String remoteBundlePath;
   final String masterPasswordLabel;
+  final int autosaveDelaySeconds;
+  final EncryptionProfile selectedEncryptionProfile;
+  final String currentVaultKdfLabel;
+  final ValueChanged<EncryptionProfile> onChangeEncryptionProfile;
   final VoidCallback onLock;
   final Future<void> Function() onInstallDownloadedUpdate;
   final String? titleUpdateLabel;
@@ -316,7 +325,7 @@ class _HomePageState extends State<HomePage> {
                           icon: const Icon(Icons.close)),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 10),
                   Expanded(
                     child: Container(
                       width: double.infinity,
@@ -704,22 +713,33 @@ class _HomePageState extends State<HomePage> {
                                   remoteBundlePath: widget.remoteBundlePath,
                                   sessionLabel: widget.masterPasswordLabel,
                                   saveLabel: _saveLabel(widget.controller),
+                                  autosaveDelaySeconds:
+                                      widget.autosaveDelaySeconds,
+                                  selectedEncryptionProfile:
+                                      widget.selectedEncryptionProfile,
+                                  currentVaultKdfLabel:
+                                      widget.currentVaultKdfLabel,
+                                  onChangeEncryptionProfile:
+                                      widget.onChangeEncryptionProfile,
                                   onToggle: () => setState(() =>
                                       _detailsExpanded = !_detailsExpanded),
                                 ),
-                                const SizedBox(height: 20),
-                                _SidebarSearch(
-                                  controller: _searchController,
-                                  wholeWord: widget.controller.wholeWord,
-                                  regexMode: widget.controller.regexMode,
-                                  onChanged:
-                                      widget.controller.updateSearchQuery,
-                                  onToggleWholeWord:
-                                      widget.controller.toggleWholeWord,
-                                  onToggleRegex:
-                                      widget.controller.toggleRegexMode,
-                                ),
-                                const SizedBox(height: 18),
+                                if (!_detailsExpanded) ...[
+                                  const SizedBox(height: 20),
+                                  _SidebarSearch(
+                                    controller: _searchController,
+                                    wholeWord: widget.controller.wholeWord,
+                                    regexMode: widget.controller.regexMode,
+                                    onChanged:
+                                        widget.controller.updateSearchQuery,
+                                    onToggleWholeWord:
+                                        widget.controller.toggleWholeWord,
+                                    onToggleRegex:
+                                        widget.controller.toggleRegexMode,
+                                  ),
+                                  const SizedBox(height: 18),
+                                ] else
+                                  const SizedBox(height: 12),
                                 FilledButton.icon(
                                   onPressed: widget.controller.createDocument,
                                   style: FilledButton.styleFrom(
@@ -1067,6 +1087,10 @@ class _VaultDetailsCard extends StatelessWidget {
     required this.remoteBundlePath,
     required this.sessionLabel,
     required this.saveLabel,
+    required this.autosaveDelaySeconds,
+    required this.selectedEncryptionProfile,
+    required this.currentVaultKdfLabel,
+    required this.onChangeEncryptionProfile,
     required this.onToggle,
   });
 
@@ -1077,13 +1101,17 @@ class _VaultDetailsCard extends StatelessWidget {
   final String remoteBundlePath;
   final String sessionLabel;
   final String saveLabel;
+  final int autosaveDelaySeconds;
+  final EncryptionProfile selectedEncryptionProfile;
+  final String currentVaultKdfLabel;
+  final ValueChanged<EncryptionProfile> onChangeEncryptionProfile;
   final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
           color: const Color(0xFF214B3F),
           borderRadius: BorderRadius.circular(24)),
@@ -1092,7 +1120,7 @@ class _VaultDetailsCard extends StatelessWidget {
         children: [
           InkWell(
             onTap: onToggle,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(15),
             child: Row(
               children: [
                 const Icon(Icons.tune, color: Color(0xFFDDECE5)),
@@ -1119,11 +1147,97 @@ class _VaultDetailsCard extends StatelessWidget {
                 label: 'Remote', value: remoteBundlePath, compactValue: true),
             _SidebarDetailRow(label: 'Session', value: sessionLabel),
             _SidebarDetailRow(label: 'Save', value: saveLabel),
+            _SidebarDetailRow(label: 'Autosave', value: '${autosaveDelaySeconds}s'),
+            _SidebarDetailRow(label: 'Current KDF', value: currentVaultKdfLabel),
             const _SidebarDetailRow(
                 label: 'Shortcut', value: 'Ctrl+S / Ctrl+V'),
+            const SizedBox(height: 10),
+            const Text(
+              '新保存使用的加密强度',
+              style: TextStyle(
+                color: Color(0xFFE6F1EC),
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 10),
+            _SidebarEncryptionProfileSelector(
+              selectedProfile: selectedEncryptionProfile,
+              onChanged: onChangeEncryptionProfile,
+            ),
           ],
         ],
       ),
+    );
+  }
+}
+
+class _SidebarEncryptionProfileSelector extends StatelessWidget {
+  const _SidebarEncryptionProfileSelector({
+    required this.selectedProfile,
+    required this.onChanged,
+  });
+
+  final EncryptionProfile selectedProfile;
+  final ValueChanged<EncryptionProfile> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (final profile in EncryptionProfile.values) ...[
+          SizedBox(
+            width: double.infinity,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: OutlinedButton(
+                onPressed: () => onChanged(profile),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: profile == selectedProfile
+                      ? const Color(0xFFE5F2EC)
+                      : const Color(0xFF18352D),
+                  foregroundColor: profile == selectedProfile
+                      ? const Color(0xFF1D4037)
+                      : const Color(0xFFE8F1EC),
+                  side: BorderSide(
+                    color: profile == selectedProfile
+                        ? const Color(0xFF93C1AE)
+                        : const Color(0xFF40655A),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                  alignment: Alignment.centerLeft,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      profile == selectedProfile
+                          ? Icons.check_circle
+                          : Icons.radio_button_unchecked,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        profile.displayLabel,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -1201,14 +1315,14 @@ class _SidebarSearch extends StatelessWidget {
             filled: true,
             fillColor: const Color(0xFF214B3F),
             border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(16),
                 borderSide: BorderSide.none),
           ),
         ),
         const SizedBox(height: 14),
         Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: 10,
+          runSpacing: 10,
           children: [
             _SidebarToggleChip(
                 label: 'Whole Word',
@@ -1241,7 +1355,7 @@ class _SidebarToggleChip extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 5),
           decoration: BoxDecoration(
             color: active ? const Color(0xFFE9F4EE) : const Color(0xFFFFFFFF),
             borderRadius: BorderRadius.circular(18),
@@ -1476,11 +1590,11 @@ class _ModeSegment extends StatelessWidget {
       showSelectedIcon: true,
       segments: const [
         ButtonSegment<bool>(
-            value: false, icon: Icon(Icons.edit_outlined), label: Text('Edit')),
-        ButtonSegment<bool>(
             value: true,
             icon: Icon(Icons.visibility_outlined),
             label: Text('Preview')),
+        ButtonSegment<bool>(
+            value: false, icon: Icon(Icons.edit_outlined), label: Text('Edit')),
       ],
       selected: {previewMode},
       onSelectionChanged: (selection) {
@@ -1682,7 +1796,7 @@ class _MarkdownPreview extends StatelessWidget {
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(16),
                 child: Image.memory(bytes, fit: BoxFit.contain),
               ),
             );

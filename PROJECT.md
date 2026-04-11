@@ -69,7 +69,7 @@ Asset
 当前设计：
 
 * 用户第一次创建保险库时设置主密码
-* 主密码不会写入 `config.json`
+* 主密码不会写入 `config.toml`
 * 主密码直接输入给 KDF，不做额外 MD5 预处理
 * 修改主密码时，会对整个 `vault.bundle` 重新加密
 
@@ -193,13 +193,13 @@ app_data/
   secret_book/
     <username>/
       vault.bundle
-      config.json
+      config.toml
 ```
 
 说明：
 
 * `vault.bundle`：唯一敏感文件
-* `config.json`：只存非敏感配置，例如 OSS endpoint、STS 地址、自动保存延迟等
+* `config.toml`：只存非敏感配置，例如 OSS endpoint、STS 地址、自动保存延迟等
 
 ### 当前保存流程
 
@@ -280,7 +280,7 @@ app_data/
 ### 自动保存
 
 * 默认编辑后 15 秒保存
-* 可在 `config.json` 中调整
+* 可在 `config.toml` 中调整
 
 ---
 

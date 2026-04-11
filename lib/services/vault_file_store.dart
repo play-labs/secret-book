@@ -53,6 +53,11 @@ class VaultFileStore {
 
   Future<File> resolveConfigFile() async {
     final userDir = await resolveUserDirectory();
+    return File(path.join(userDir.path, 'config.toml'));
+  }
+
+  Future<File> resolveLegacyConfigJsonFile() async {
+    final userDir = await resolveUserDirectory();
     return File(path.join(userDir.path, 'config.json'));
   }
 
@@ -117,7 +122,7 @@ class VaultFileStore {
     if (trimmed.isEmpty) {
       return '';
     }
-    if (RegExp(r'[<>:"/\\|?*]').hasMatch(trimmed)) {
+    if (RegExp(r'[<>:"/\|?*]').hasMatch(trimmed)) {
       throw ArgumentError('Username contains unsupported characters.');
     }
     if (trimmed == '.' || trimmed == '..') {

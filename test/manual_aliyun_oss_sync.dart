@@ -70,7 +70,7 @@ Future<_SmokeResult> _runSmoke(AppConfig baseConfig) async {
     serializer: JsonBundleSerializer(),
     vaultPacker: VaultPacker(),
     fileStore: fileStore,
-    cryptoService: CryptoService(),
+    cryptoServiceBuilder: () => CryptoService(),
   );
   final syncService = AliyunOssSyncService(
     fileStore: fileStore,

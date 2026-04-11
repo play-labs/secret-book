@@ -116,7 +116,7 @@ vault.bundle
 
 ```text
 %APPDATA%/secret_book/<username>/vault.bundle
-%APPDATA%/secret_book/<username>/config.json
+%APPDATA%/secret_book/<username>/config.toml
 ```
 
 ### SyncService
