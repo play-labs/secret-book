@@ -67,7 +67,8 @@ class AppConfig {
           '{"Content-Type":"application/json","X-Auth-Token":"sts-5334221234555"}',
       stsBodyJson:
           '{"role_session_name":"secret-book","duration_seconds":1800}',
-      appUpdateJsonUrl: 'https://secret-book.oss-cn-hangzhou.aliyuncs.com/version/version.json',
+      appUpdateJsonUrl:
+          'https://game-config.oss-cn-shanghai.aliyuncs.com/secret-book/version.json',
       autosaveDelaySeconds: 15,
       remoteSyncIntervalSeconds: 60,
       lastSyncedRevision: null,
@@ -110,7 +111,8 @@ class AppConfig {
       stsBodyJson: stsBodyJson ?? this.stsBodyJson,
       appUpdateJsonUrl: appUpdateJsonUrl ?? this.appUpdateJsonUrl,
       autosaveDelaySeconds: autosaveDelaySeconds ?? this.autosaveDelaySeconds,
-      remoteSyncIntervalSeconds: remoteSyncIntervalSeconds ?? this.remoteSyncIntervalSeconds,
+      remoteSyncIntervalSeconds:
+          remoteSyncIntervalSeconds ?? this.remoteSyncIntervalSeconds,
       lastSyncedRevision: clearLastSyncedRevision
           ? null
           : lastSyncedRevision ?? this.lastSyncedRevision,
@@ -175,11 +177,18 @@ class AppConfig {
           '{"Content-Type":"application/json","X-Auth-Token":"sts-5334221234555"}',
       stsBodyJson: map['stsBodyJson'] as String? ??
           '{"role_session_name":"secret-book","duration_seconds":1800}',
-      appUpdateJsonUrl: ((map['appUpdateJsonUrl'] as String?)?.trim().isNotEmpty ?? false)
+      appUpdateJsonUrl: ((map['appUpdateJsonUrl'] as String?)
+                  ?.trim()
+                  .isNotEmpty ??
+              false)
           ? (map['appUpdateJsonUrl'] as String).trim()
-          : 'https://secret-book.oss-cn-hangzhou.aliyuncs.com/version/version.json',
-      autosaveDelaySeconds: parsedDelay == null || parsedDelay < 1 ? 15 : parsedDelay,
-      remoteSyncIntervalSeconds: parsedSyncInterval == null || parsedSyncInterval < 5 ? 60 : parsedSyncInterval,
+          : 'https://game-config.oss-cn-shanghai.aliyuncs.com/secret-book/version.json',
+      autosaveDelaySeconds:
+          parsedDelay == null || parsedDelay < 1 ? 15 : parsedDelay,
+      remoteSyncIntervalSeconds:
+          parsedSyncInterval == null || parsedSyncInterval < 5
+              ? 60
+              : parsedSyncInterval,
       lastSyncedRevision: map['lastSyncedRevision'] as int?,
       lastRemoteRevision: map['lastRemoteRevision'] as int?,
       lastSyncAt: map['lastSyncAt'] == null
