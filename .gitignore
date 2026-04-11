@@ -48,3 +48,4 @@ app.*.map.json
 .codex-temp/
 dist/
 flutter_01.log
+config.json

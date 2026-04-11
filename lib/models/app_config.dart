@@ -66,7 +66,7 @@ class AppConfig {
       stsHeadersJson:
           '{"Content-Type":"application/json","X-Auth-Token":"replace-me"}',
       stsBodyJson:
-          '{"role_session_name":"secret-book","duration_seconds":1800}',
+          '{"role_session_name":"example-session","duration_seconds":1800}',
       appUpdateJsonUrl:
           'https://example.com/secret-book/version.json',
       autosaveDelaySeconds: 15,
@@ -169,14 +169,14 @@ class AppConfig {
       ossBucketName: map['ossBucketName'] as String? ?? 'example-secret-book',
       ossObjectKey: map['ossObjectKey'] as String? ?? 'vault.bundle',
       stsApiUrl: map['stsApiUrl'] as String? ??
-          'http://127.0.0.1:8081/api/v1/sts/assume-role',
+          'https://example.com/api/v1/sts/assume-role',
       stsHttpMethod: StsHttpMethod.values.byName(
         map['stsHttpMethod'] as String? ?? StsHttpMethod.post.name,
       ),
       stsHeadersJson: map['stsHeadersJson'] as String? ??
           '{"Content-Type":"application/json","X-Auth-Token":"replace-me"}',
       stsBodyJson: map['stsBodyJson'] as String? ??
-          '{"role_session_name":"secret-book","duration_seconds":1800}',
+          '{"role_session_name":"example-session","duration_seconds":1800}',
       appUpdateJsonUrl: ((map['appUpdateJsonUrl'] as String?)
                   ?.trim()
                   .isNotEmpty ??

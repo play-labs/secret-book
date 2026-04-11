@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "app": "secret_book",
   "platform": "windows",
-  "version": "0.1.3",
-  "build": 4,
+  "version": "0.1.4",
+  "build": 5,
   "publishedAt": "2026-04-11T18:00:00Z",
   "mandatory": false,
-  "downloadUrl": "https://example.com/downloads/secret_book_setup_0.1.3.exe",
+  "downloadUrl": "https://example.com/downloads/secret_book_setup_0.1.4.exe",
   "notes": [
-    "优化自动更新与安装流程",
-    "调整标题栏与登录页面布局"
+    "Improve the auth screen and vault status panel.",
+    "Bump the app version and release metadata."
   ]
 }
