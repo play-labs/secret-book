@@ -36,6 +36,7 @@ class AppConfig {
     required this.remoteSyncIntervalSeconds,
     required this.lastSyncedRevision,
     required this.lastRemoteRevision,
+    required this.lastRemoteModifiedAt,
     required this.lastSyncAt,
     required this.syncState,
     required this.syncMessage,
@@ -55,6 +56,7 @@ class AppConfig {
   final int remoteSyncIntervalSeconds;
   final int? lastSyncedRevision;
   final int? lastRemoteRevision;
+  final DateTime? lastRemoteModifiedAt;
   final DateTime? lastSyncAt;
   final SyncState syncState;
   final String? syncMessage;
@@ -77,6 +79,7 @@ class AppConfig {
       remoteSyncIntervalSeconds: 60,
       lastSyncedRevision: null,
       lastRemoteRevision: null,
+      lastRemoteModifiedAt: null,
       lastSyncAt: null,
       syncState: SyncState.idle,
       syncMessage: 'Ready',
@@ -100,6 +103,8 @@ class AppConfig {
     bool clearLastSyncedRevision = false,
     int? lastRemoteRevision,
     bool clearLastRemoteRevision = false,
+    DateTime? lastRemoteModifiedAt,
+    bool clearLastRemoteModifiedAt = false,
     DateTime? lastSyncAt,
     bool clearLastSyncAt = false,
     SyncState? syncState,
@@ -125,6 +130,9 @@ class AppConfig {
       lastRemoteRevision: clearLastRemoteRevision
           ? null
           : lastRemoteRevision ?? this.lastRemoteRevision,
+      lastRemoteModifiedAt: clearLastRemoteModifiedAt
+          ? null
+          : lastRemoteModifiedAt ?? this.lastRemoteModifiedAt,
       lastSyncAt: clearLastSyncAt ? null : lastSyncAt ?? this.lastSyncAt,
       syncState: syncState ?? this.syncState,
       syncMessage: syncMessage ?? this.syncMessage,
@@ -147,6 +155,7 @@ class AppConfig {
       'remoteSyncIntervalSeconds': remoteSyncIntervalSeconds,
       'lastSyncedRevision': lastSyncedRevision,
       'lastRemoteRevision': lastRemoteRevision,
+      'lastRemoteModifiedAt': lastRemoteModifiedAt?.toIso8601String(),
       'lastSyncAt': lastSyncAt?.toIso8601String(),
       'syncState': syncState.name,
       'syncMessage': syncMessage,
@@ -199,6 +208,9 @@ class AppConfig {
               : parsedSyncInterval,
       lastSyncedRevision: map['lastSyncedRevision'] as int?,
       lastRemoteRevision: map['lastRemoteRevision'] as int?,
+      lastRemoteModifiedAt: map['lastRemoteModifiedAt'] == null
+          ? null
+          : DateTime.parse(map['lastRemoteModifiedAt'] as String),
       lastSyncAt: map['lastSyncAt'] == null
           ? null
           : DateTime.parse(map['lastSyncAt'] as String),

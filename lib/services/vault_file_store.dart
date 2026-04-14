@@ -51,6 +51,23 @@ class VaultFileStore {
     return File(path.join(userDir.path, 'vault.bundle'));
   }
 
+  Future<File?> backupLocalBundleIfPresent({DateTime? timestamp}) async {
+    final bundleFile = await resolveBundleFile();
+    if (!await bundleFile.exists()) {
+      return null;
+    }
+
+    final backupTimestamp = timestamp ?? DateTime.now().toUtc();
+    final backupFile = File(
+      path.join(
+        bundleFile.parent.path,
+        'vault.bundle_${_formatBackupTimestamp(backupTimestamp)}',
+      ),
+    );
+    await bundleFile.copy(backupFile.path);
+    return backupFile;
+  }
+
   Future<File> resolveConfigFile() async {
     final userDir = await resolveUserDirectory();
     return File(path.join(userDir.path, 'config.toml'));
@@ -107,6 +124,17 @@ class VaultFileStore {
       return;
     }
     await writeBundle(remoteBytes);
+  }
+
+  String _formatBackupTimestamp(DateTime value) {
+    final year = value.year.toString().padLeft(4, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    final second = value.second.toString().padLeft(2, '0');
+    final millisecond = value.millisecond.toString().padLeft(3, '0');
+    return '${year}${month}${day}T${hour}${minute}${second}${millisecond}Z';
   }
 
   String _requireActiveUsername() {

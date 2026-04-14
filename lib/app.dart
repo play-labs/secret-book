@@ -52,12 +52,14 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
   String? _bundlePath;
   String? _remoteBundlePath;
   bool? _hasExistingBundle;
+  String? _preparingStatusMessage;
   AppConfig? _appConfig;
   VaultKdfSettings? _bundleKdfSettings;
   bool _isPreparingUser = false;
   Timer? _remoteSyncTimer;
   Timer? _updateCheckTimer;
   bool _isRunningRemoteSync = false;
+  bool _isAutoPullingRemote = false;
   bool _suspendAutoSyncForConflict = false;
   bool _isConflictDialogActive = false;
   bool _isCheckingUpdates = false;
@@ -180,11 +182,15 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
   Future<void> _selectUsername(String username) async {
     setState(() {
       _isPreparingUser = true;
+      _preparingStatusMessage = 'Preparing local vault...';
     });
 
     try {
+      _tracePreparing('Selecting user "$username"');
       fileStore.setActiveUsername(username);
+      _setPreparingStatus('Loading local config...');
       var config = await configStore.read();
+      _setPreparingStatus('Inspecting local vault...');
       var bundleKdfSettings = await repository.inspectBundleKdfSettings();
       final matchedProfile = bundleKdfSettings == null
           ? null
@@ -195,7 +201,46 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
       }
       _appConfig = config;
       repository = _createRepository();
+      _setPreparingStatus('Inspecting local vault...');
       bundleKdfSettings ??= await repository.inspectBundleKdfSettings();
+      final hadLocalBundle = await fileStore.bundleExists();
+      _tracePreparing('Local bundle exists: $hadLocalBundle');
+      var hasRemoteBundle = false;
+      try {
+        _setPreparingStatus('Checking OSS vault...');
+        hasRemoteBundle = await syncService
+            .remoteBundleExists()
+            .timeout(const Duration(seconds: 15));
+        _tracePreparing('Remote bundle exists: $hasRemoteBundle');
+      } catch (error, stackTrace) {
+        _tracePreparing(
+          'OSS probe failed, falling back to local vault only: ${_describeError(error)}',
+        );
+        debugPrintStack(stackTrace: stackTrace);
+        _setPreparingStatus('OSS check failed, continuing with local vault...');
+      }
+      if (hasRemoteBundle) {
+        try {
+          _setPreparingStatus(
+            hadLocalBundle
+                ? 'Backing up local vault and pulling OSS data...'
+                : 'Pulling OSS data...',
+          );
+          await syncService.pullRemoteToLocal(
+            backupLocalIfPresent: hadLocalBundle,
+          );
+          _tracePreparing('Remote vault pulled to local storage');
+          _setPreparingStatus('Inspecting pulled vault...');
+          bundleKdfSettings = await repository.inspectBundleKdfSettings();
+        } catch (error, stackTrace) {
+          _tracePreparing(
+            'OSS pull failed, keeping local vault: ${_describeError(error)}',
+          );
+          debugPrintStack(stackTrace: stackTrace);
+          _setPreparingStatus('OSS pull failed, continuing with local vault...');
+        }
+      }
+      _setPreparingStatus('Resolving vault paths...');
       final bundlePath = await repository.getBundlePath();
       final hasBundle = await fileStore.bundleExists();
       final remotePath = await syncService.getRemoteBundlePath();
@@ -213,15 +258,50 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
         _hasExistingBundle = hasBundle;
         _masterPassword = null;
         _isPreparingUser = false;
+        _preparingStatusMessage = null;
         _suspendAutoSyncForConflict = false;
         _isConflictDialogActive = false;
         _appConfig = config;
         _bundleKdfSettings = bundleKdfSettings;
       });
-    } catch (_) {
+    } catch (error, stackTrace) {
+      _tracePreparing('Failed while preparing user "$username": $error');
+      debugPrintStack(stackTrace: stackTrace);
       fileStore.clearActiveUsername();
+      if (mounted) {
+        setState(() {
+          _isPreparingUser = false;
+          _preparingStatusMessage = null;
+        });
+      } else {
+        _isPreparingUser = false;
+        _preparingStatusMessage = null;
+      }
       rethrow;
     }
+  }
+
+  void _setPreparingStatus(String message) {
+    _tracePreparing(message);
+    if (!mounted) {
+      _preparingStatusMessage = message;
+      return;
+    }
+    setState(() {
+      _preparingStatusMessage = message;
+    });
+  }
+
+  void _tracePreparing(String message) {
+    debugPrint('[user-prepare] $message');
+  }
+
+  String _describeError(Object error) {
+    final text = error.toString().trim();
+    if (text.length <= 240) {
+      return text;
+    }
+    return '${text.substring(0, 240)}...';
   }
 
   Future<void> _unlock(String password) async {
@@ -336,6 +416,17 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
       return;
     }
     final status = controller.syncStatus;
+    if (status.state == SyncState.conflict &&
+        !_isAutoPullingRemote &&
+        !controller.isSaving &&
+        !controller.hasPendingChanges &&
+        _masterPassword != null) {
+      _isAutoPullingRemote = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_autoPullRemoteUpdate());
+      });
+      return;
+    }
     if (status.state == SyncState.conflict && !_isConflictDialogActive) {
       _suspendAutoSyncForConflict = true;
       _isConflictDialogActive = true;
@@ -352,6 +443,40 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
           }
         }
       });
+    }
+  }
+
+  Future<void> _autoPullRemoteUpdate() async {
+    if (!mounted || _masterPassword == null) {
+      _isAutoPullingRemote = false;
+      return;
+    }
+
+    _tracePreparing('Remote revision is newer and local state is clean. Pulling automatically.');
+    _stopRemoteSyncTimer();
+    try {
+      final pulled = await syncService.pullRemoteToLocal();
+      if (!pulled || !mounted || _masterPassword == null) {
+        return;
+      }
+      final vault = await repository.unlock(_masterPassword!);
+      final nextController = _buildController(vault: vault, password: _masterPassword!);
+      _replaceController(nextController);
+      await _controller!.refreshRemoteStatus();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _suspendAutoSyncForConflict = false;
+      });
+    } catch (error, stackTrace) {
+      _tracePreparing('Automatic remote pull failed: ${_describeError(error)}');
+      debugPrintStack(stackTrace: stackTrace);
+    } finally {
+      _isAutoPullingRemote = false;
+      if (mounted && !_suspendAutoSyncForConflict) {
+        await _restartRemoteSyncTimer();
+      }
     }
   }
 
@@ -756,7 +881,18 @@ class _SecretBookAppState extends State<SecretBookApp> with WidgetsBindingObserv
         fontFamily: 'Microsoft YaHei',
       ),
       home: _isPreparingUser
-          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+          ? Scaffold(
+              body: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 16),
+                    Text(_preparingStatusMessage ?? 'Preparing user...'),
+                  ],
+                ),
+              ),
+            )
           : _activeUsername == null
               ? UsernameEntryPage(onContinue: _selectUsername)
               : _controller == null

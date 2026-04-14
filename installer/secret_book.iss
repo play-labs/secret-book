@@ -1,5 +1,5 @@
 #define AppName "Secret Book"
-#define AppVersion "0.1.5"
+#define AppVersion "0.1.6"
 #define AppPublisher "play-labs"
 #define AppExeName "secret_book.exe"
 #define AppId "{{8C6A6E59-5E94-4AC0-9A4A-0A1B8E0E5F13}"

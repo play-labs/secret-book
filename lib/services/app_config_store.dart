@@ -1,9 +1,14 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show FlutterError;
+import 'package:flutter/services.dart' show rootBundle;
+
 import '../models/app_config.dart';
 import 'vault_file_store.dart';
 
 class AppConfigStore {
+  static const String bundledConfigAssetPath = 'config.toml';
+
   AppConfigStore({
     required VaultFileStore fileStore,
   }) : _fileStore = fileStore;
@@ -25,7 +30,8 @@ class AppConfigStore {
       return config;
     }
 
-    final config = AppConfig.initial();
+    final bundledConfig = await _readBundledConfig();
+    final config = bundledConfig ?? AppConfig.initial();
     await write(config);
     return config;
   }
@@ -36,6 +42,15 @@ class AppConfigStore {
       _encodeToml(config),
       flush: true,
     );
+  }
+
+  Future<AppConfig?> _readBundledConfig() async {
+    try {
+      final toml = await rootBundle.loadString(bundledConfigAssetPath);
+      return AppConfig.fromMap(_decodeToml(toml));
+    } on FlutterError {
+      return null;
+    }
   }
 
   Map<String, dynamic> _decodeToml(String raw) {
@@ -76,6 +91,7 @@ class AppConfigStore {
       'stsBodyJson': result['sts.body_json'],
       'lastSyncedRevision': result['sync.last_synced_revision'],
       'lastRemoteRevision': result['sync.last_remote_revision'],
+      'lastRemoteModifiedAt': result['sync.last_remote_modified_at'],
       'lastSyncAt': result['sync.last_sync_at'],
       'syncState': result['sync.state'],
       'syncMessage': result['sync.message'],
@@ -128,6 +144,7 @@ class AppConfigStore {
       '[sync]',
       'last_synced_revision = ${_tomlNullableInt(config.lastSyncedRevision)}',
       'last_remote_revision = ${_tomlNullableInt(config.lastRemoteRevision)}',
+      'last_remote_modified_at = ${_tomlNullableString(config.lastRemoteModifiedAt?.toIso8601String())}',
       'last_sync_at = ${_tomlNullableString(config.lastSyncAt?.toIso8601String())}',
       'state = ${_tomlString(config.syncState.name)}',
       'message = ${_tomlNullableString(config.syncMessage)}',

@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "app": "secret_book",
   "platform": "windows",
-  "version": "0.1.4",
-  "build": 5,
+  "version": "0.1.6",
+  "build": 7,
   "publishedAt": "2026-04-11T18:00:00Z",
   "mandatory": false,
-  "downloadUrl": "https://example.com/downloads/secret_book_setup_0.1.4.exe",
+  "downloadUrl": "https://example.com/downloads/secret_book_setup_0.1.6.exe",
   "notes": [
-    "Improve the auth screen and vault status panel.",
-    "Bump the app version and release metadata."
+    "Add safer single-user sync conflict detection and OSS fallback on startup.",
+    "Bundle the default config into the app and bump release metadata."
   ]
 }

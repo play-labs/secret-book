@@ -1,7 +1,8 @@
 import 'dart:convert';
-import 'dart:typed_data';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_oss_aliyun/flutter_oss_aliyun.dart';
 import 'package:path/path.dart' as path;
 
@@ -12,6 +13,8 @@ import 'app_config_store.dart';
 import 'vault_file_store.dart';
 
 abstract class SyncService {
+  Future<bool> remoteBundleExists();
+
   Future<SyncStatusSnapshot> syncAfterLocalSave({
     required int localRevision,
   });
@@ -20,7 +23,9 @@ abstract class SyncService {
     required int localRevision,
   });
 
-  Future<bool> pullRemoteToLocal();
+  Future<bool> pullRemoteToLocal({
+    bool backupLocalIfPresent = false,
+  });
 
   Future<SyncStatusSnapshot> overwriteRemoteWithLocal({
     required int localRevision,
@@ -66,6 +71,20 @@ class AliyunOssSyncService implements SyncService {
   }
 
   @override
+  Future<bool> remoteBundleExists() async {
+    final config = await _configStore.read();
+    final validationError = _validateConfig(config);
+    if (validationError != null) {
+      _trace('remoteBundleExists skipped: $validationError');
+      return false;
+    }
+    final client = await _buildClient(config);
+    final objectKey = _buildUserObjectKey(config);
+    _trace('Checking remote bundle existence: oss://${config.ossBucketName}/$objectKey');
+    return _doesRemoteObjectExist(client, objectKey);
+  }
+
+  @override
   Future<SyncStatusSnapshot> syncAfterLocalSave({
     required int localRevision,
   }) async {
@@ -90,17 +109,27 @@ class AliyunOssSyncService implements SyncService {
       return SyncStatusSnapshot.fromConfig(next, localRevision: localRevision);
     }
 
-    final remoteRevision = await _readRemoteRevision();
+    final remoteMetadata = await _getRemoteBundleMetadata();
+    final remoteRevision = await _resolveRemoteRevision(
+      metadata: remoteMetadata,
+      cachedRemoteModifiedAt: config.lastRemoteModifiedAt,
+      cachedRemoteRevision: config.lastRemoteRevision,
+    );
     final knownRemoteRevision = config.lastSyncedRevision;
-    final hasConflict = remoteRevision != null &&
-        knownRemoteRevision != null &&
-        remoteRevision > knownRemoteRevision;
-    final hasUnknownRemote = remoteRevision != null && knownRemoteRevision == null;
+    final hasConflict = _isRemoteNewerThanLocal(
+      remoteRevision: remoteRevision,
+      localRevision: localRevision,
+      lastSyncedRevision: knownRemoteRevision,
+    );
+    final hasUnknownRemote = remoteRevision != null &&
+        knownRemoteRevision == null &&
+        remoteRevision > localRevision;
 
     if (hasConflict || hasUnknownRemote) {
       final next = config.copyWith(
         syncProvider: SyncProvider.aliyunOss,
         lastRemoteRevision: remoteRevision,
+        lastRemoteModifiedAt: remoteMetadata.lastModified,
         lastSyncAt: DateTime.now().toUtc(),
         syncState: SyncState.conflict,
         syncMessage: hasUnknownRemote
@@ -115,10 +144,16 @@ class AliyunOssSyncService implements SyncService {
     final objectKey = _buildUserObjectKey(config);
     await _backupRemoteBundleIfPresent(client, config, objectKey);
     await client.putObject(localBundle, objectKey);
+    final uploadedMetadata = await _getRemoteBundleMetadata(
+      client: client,
+      config: config,
+      objectKey: objectKey,
+    );
     final next = config.copyWith(
       syncProvider: SyncProvider.aliyunOss,
       lastSyncedRevision: localRevision,
       lastRemoteRevision: localRevision,
+      lastRemoteModifiedAt: uploadedMetadata.lastModified,
       lastSyncAt: DateTime.now().toUtc(),
       syncState: SyncState.synced,
       syncMessage: 'Encrypted bundle uploaded to Aliyun OSS',
@@ -142,32 +177,45 @@ class AliyunOssSyncService implements SyncService {
       return SyncStatusSnapshot.fromConfig(next, localRevision: localRevision);
     }
 
-    final remoteRevision = await _readRemoteRevision();
+    final remoteMetadata = await _getRemoteBundleMetadata();
+    final remoteRevision = await _resolveRemoteRevision(
+      metadata: remoteMetadata,
+      cachedRemoteModifiedAt: config.lastRemoteModifiedAt,
+      cachedRemoteRevision: config.lastRemoteRevision,
+    );
     final lastSyncedRevision = config.lastSyncedRevision;
 
     AppConfig next;
-    if (remoteRevision == null) {
+    if (!remoteMetadata.exists) {
       next = config.copyWith(
         syncProvider: SyncProvider.aliyunOss,
         syncState: SyncState.idle,
         syncMessage: 'Remote vault is empty',
         clearLastRemoteRevision: true,
-        lastSyncAt: DateTime.now().toUtc(),
-      );
-    } else if (lastSyncedRevision != null && remoteRevision > lastSyncedRevision) {
-      next = config.copyWith(
-        syncProvider: SyncProvider.aliyunOss,
-        syncState: SyncState.conflict,
-        syncMessage: 'Remote revision is newer. Pull required.',
-        lastRemoteRevision: remoteRevision,
+        clearLastRemoteModifiedAt: true,
         lastSyncAt: DateTime.now().toUtc(),
       );
     } else if (remoteRevision == localRevision) {
       next = config.copyWith(
         syncProvider: SyncProvider.aliyunOss,
+        lastSyncedRevision: remoteRevision,
+        lastRemoteRevision: remoteRevision,
+        lastRemoteModifiedAt: remoteMetadata.lastModified,
+        lastSyncAt: DateTime.now().toUtc(),
         syncState: SyncState.synced,
         syncMessage: 'Remote revision matches local vault',
+      );
+    } else if (_isRemoteNewerThanLocal(
+      remoteRevision: remoteRevision,
+      localRevision: localRevision,
+      lastSyncedRevision: lastSyncedRevision,
+    )) {
+      next = config.copyWith(
+        syncProvider: SyncProvider.aliyunOss,
+        syncState: SyncState.conflict,
+        syncMessage: 'Remote revision is newer. Pull required.',
         lastRemoteRevision: remoteRevision,
+        lastRemoteModifiedAt: remoteMetadata.lastModified,
         lastSyncAt: DateTime.now().toUtc(),
       );
     } else {
@@ -176,6 +224,7 @@ class AliyunOssSyncService implements SyncService {
         syncState: SyncState.idle,
         syncMessage: 'Local changes not uploaded yet',
         lastRemoteRevision: remoteRevision,
+        lastRemoteModifiedAt: remoteMetadata.lastModified,
         lastSyncAt: DateTime.now().toUtc(),
       );
     }
@@ -184,14 +233,23 @@ class AliyunOssSyncService implements SyncService {
   }
 
   @override
-  Future<bool> pullRemoteToLocal() async {
+  Future<bool> pullRemoteToLocal({
+    bool backupLocalIfPresent = false,
+  }) async {
     final config = await _configStore.read();
     if (_validateConfig(config) != null) {
       return false;
     }
-    final remoteBytes = await _downloadRemoteBundle();
+    _trace('Pulling remote bundle to local storage');
+    final remoteMetadata = await _getRemoteBundleMetadata(config: config);
+    final remoteBytes = await _downloadRemoteBundle(config: config);
     if (remoteBytes == null) {
+      _trace('Pull skipped: remote bundle is missing');
       return false;
+    }
+    if (backupLocalIfPresent) {
+      _trace('Backing up local bundle before replacing it with remote data');
+      await _fileStore.backupLocalBundleIfPresent();
     }
     await _fileStore.writeBundle(remoteBytes);
     final remoteRevision = _readRevision(remoteBytes);
@@ -199,6 +257,7 @@ class AliyunOssSyncService implements SyncService {
       syncProvider: SyncProvider.aliyunOss,
       lastSyncedRevision: remoteRevision,
       lastRemoteRevision: remoteRevision,
+      lastRemoteModifiedAt: remoteMetadata.lastModified,
       lastSyncAt: DateTime.now().toUtc(),
       syncState: SyncState.synced,
       syncMessage: 'Pulled remote encrypted bundle from Aliyun OSS',
@@ -236,11 +295,17 @@ class AliyunOssSyncService implements SyncService {
     final objectKey = _buildUserObjectKey(config);
     await _backupRemoteBundleIfPresent(client, config, objectKey);
     await client.putObject(localBundle, objectKey);
+    final uploadedMetadata = await _getRemoteBundleMetadata(
+      client: client,
+      config: config,
+      objectKey: objectKey,
+    );
 
     final next = config.copyWith(
       syncProvider: SyncProvider.aliyunOss,
       lastSyncedRevision: localRevision,
       lastRemoteRevision: localRevision,
+      lastRemoteModifiedAt: uploadedMetadata.lastModified,
       lastSyncAt: DateTime.now().toUtc(),
       syncState: SyncState.synced,
       syncMessage: 'Local vault overwrote remote encrypted bundle',
@@ -249,20 +314,21 @@ class AliyunOssSyncService implements SyncService {
     return SyncStatusSnapshot.fromConfig(next, localRevision: localRevision);
   }
 
-  Future<int?> _readRemoteRevision() async {
-    final bytes = await _downloadRemoteBundle();
-    return _readRevision(bytes);
-  }
-
-  Future<Uint8List?> _downloadRemoteBundle() async {
-    final config = await _configStore.read();
-    final client = await _buildClient(config);
-    final objectKey = _buildUserObjectKey(config);
-    final exists = await _doesRemoteObjectExist(client, objectKey);
+  Future<Uint8List?> _downloadRemoteBundle({
+    AppConfig? config,
+    Client? client,
+    String? objectKey,
+  }) async {
+    final resolvedConfig = config ?? await _configStore.read();
+    final resolvedClient = client ?? await _buildClient(resolvedConfig);
+    final resolvedObjectKey = objectKey ?? _buildUserObjectKey(resolvedConfig);
+    final exists = await _doesRemoteObjectExist(resolvedClient, resolvedObjectKey);
     if (!exists) {
+      _trace('Remote object does not exist: $resolvedObjectKey');
       return null;
     }
-    final response = await client.getObject(objectKey);
+    _trace('Downloading remote object: $resolvedObjectKey');
+    final response = await resolvedClient.getObject(resolvedObjectKey);
     final data = response.data;
     if (data is Uint8List) {
       return data;
@@ -274,6 +340,29 @@ class AliyunOssSyncService implements SyncService {
       return Uint8List.fromList(utf8.encode(data));
     }
     throw StateError('Unexpected OSS response payload type: ${data.runtimeType}');
+  }
+
+  Future<_RemoteBundleMetadata> _getRemoteBundleMetadata({
+    AppConfig? config,
+    Client? client,
+    String? objectKey,
+  }) async {
+    final resolvedConfig = config ?? await _configStore.read();
+    final resolvedClient = client ?? await _buildClient(resolvedConfig);
+    final resolvedObjectKey = objectKey ?? _buildUserObjectKey(resolvedConfig);
+    try {
+      final response = await resolvedClient.getObjectMeta(resolvedObjectKey);
+      final lastModifiedHeader = response.headers.value('last-modified');
+      return _RemoteBundleMetadata(
+        exists: true,
+        lastModified: _parseHttpDate(lastModifiedHeader),
+      );
+    } on DioException catch (error) {
+      if (_isNotFound(error)) {
+        return const _RemoteBundleMetadata(exists: false);
+      }
+      rethrow;
+    }
   }
 
   Future<bool> _doesRemoteObjectExist(Client client, String objectKey) async {
@@ -451,6 +540,53 @@ class AliyunOssSyncService implements SyncService {
     final envelope = _serializer.deserializeEnvelope(Uint8List.fromList(bundleBytes));
     return envelope.revision;
   }
+
+  Future<int?> _resolveRemoteRevision({
+    required _RemoteBundleMetadata metadata,
+    required DateTime? cachedRemoteModifiedAt,
+    required int? cachedRemoteRevision,
+  }) async {
+    if (!metadata.exists) {
+      return null;
+    }
+    if (_matchesRemoteModifiedAt(metadata.lastModified, cachedRemoteModifiedAt) &&
+        cachedRemoteRevision != null) {
+      _trace('Remote Last-Modified unchanged, reusing cached remote revision');
+      return cachedRemoteRevision;
+    }
+    final bytes = await _downloadRemoteBundle();
+    return _readRevision(bytes);
+  }
+
+  DateTime? _parseHttpDate(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return null;
+    }
+    return HttpDate.parse(value).toUtc();
+  }
+
+  bool _matchesRemoteModifiedAt(DateTime? left, DateTime? right) {
+    if (left == null || right == null) {
+      return false;
+    }
+    return left.toUtc().isAtSameMomentAs(right.toUtc());
+  }
+
+  bool _isRemoteNewerThanLocal({
+    required int? remoteRevision,
+    required int localRevision,
+    required int? lastSyncedRevision,
+  }) {
+    if (remoteRevision == null) {
+      return false;
+    }
+    final baselineRevision = lastSyncedRevision ?? localRevision;
+    return remoteRevision > baselineRevision && remoteRevision > localRevision;
+  }
+
+  void _trace(String message) {
+    debugPrint('[aliyun-oss-sync] $message');
+  }
 }
 
 class MockOssSyncService implements SyncService {
@@ -478,6 +614,12 @@ class MockOssSyncService implements SyncService {
   }
 
   @override
+  Future<bool> remoteBundleExists() async {
+    _trace('Checking mock remote bundle existence');
+    return _fileStore.readRemoteBundle().then((bundle) => bundle != null);
+  }
+
+  @override
   Future<SyncStatusSnapshot> syncAfterLocalSave({
     required int localRevision,
   }) async {
@@ -492,17 +634,26 @@ class MockOssSyncService implements SyncService {
       return SyncStatusSnapshot.fromConfig(next, localRevision: localRevision);
     }
 
-    final remoteBundle = await _fileStore.readRemoteBundle();
-    final remoteRevision = _readRevision(remoteBundle);
+    final remoteMetadata = await _getRemoteBundleMetadata();
+    final remoteRevision = await _resolveRemoteRevision(
+      metadata: remoteMetadata,
+      cachedRemoteModifiedAt: config.lastRemoteModifiedAt,
+      cachedRemoteRevision: config.lastRemoteRevision,
+    );
     final knownRemoteRevision = config.lastSyncedRevision;
-    final hasConflict = remoteRevision != null &&
-        knownRemoteRevision != null &&
-        remoteRevision > knownRemoteRevision;
-    final hasUnknownRemote = remoteRevision != null && knownRemoteRevision == null;
+    final hasConflict = _isRemoteNewerThanLocal(
+      remoteRevision: remoteRevision,
+      localRevision: localRevision,
+      lastSyncedRevision: knownRemoteRevision,
+    );
+    final hasUnknownRemote = remoteRevision != null &&
+        knownRemoteRevision == null &&
+        remoteRevision > localRevision;
 
     if (hasConflict || hasUnknownRemote) {
       final next = config.copyWith(
         lastRemoteRevision: remoteRevision,
+        lastRemoteModifiedAt: remoteMetadata.lastModified,
         lastSyncAt: DateTime.now().toUtc(),
         syncState: SyncState.conflict,
         syncMessage: hasUnknownRemote
@@ -514,9 +665,11 @@ class MockOssSyncService implements SyncService {
     }
 
     await _fileStore.writeRemoteBundle(localBundle);
+    final uploadedMetadata = await _getRemoteBundleMetadata();
     final next = config.copyWith(
       lastSyncedRevision: localRevision,
       lastRemoteRevision: localRevision,
+      lastRemoteModifiedAt: uploadedMetadata.lastModified,
       lastSyncAt: DateTime.now().toUtc(),
       syncState: SyncState.synced,
       syncMessage: 'Encrypted bundle uploaded to mock OSS',
@@ -530,29 +683,42 @@ class MockOssSyncService implements SyncService {
     required int localRevision,
   }) async {
     final config = await _configStore.read();
-    final remoteRevision = _readRevision(await _fileStore.readRemoteBundle());
+    final remoteMetadata = await _getRemoteBundleMetadata();
+    final remoteRevision = await _resolveRemoteRevision(
+      metadata: remoteMetadata,
+      cachedRemoteModifiedAt: config.lastRemoteModifiedAt,
+      cachedRemoteRevision: config.lastRemoteRevision,
+    );
     final lastSyncedRevision = config.lastSyncedRevision;
 
     AppConfig next;
-    if (remoteRevision == null) {
+    if (!remoteMetadata.exists) {
       next = config.copyWith(
         syncState: SyncState.idle,
         syncMessage: 'Remote vault is empty',
         lastRemoteRevision: null,
         clearLastRemoteRevision: true,
+        clearLastRemoteModifiedAt: true,
       );
-    } else if (lastSyncedRevision != null && remoteRevision > lastSyncedRevision) {
+    } else if (remoteRevision == localRevision) {
+      next = config.copyWith(
+        lastSyncedRevision: remoteRevision,
+        syncState: SyncState.synced,
+        syncMessage: 'Remote revision matches local vault',
+        lastRemoteRevision: remoteRevision,
+        lastRemoteModifiedAt: remoteMetadata.lastModified,
+        lastSyncAt: DateTime.now().toUtc(),
+      );
+    } else if (_isRemoteNewerThanLocal(
+      remoteRevision: remoteRevision,
+      localRevision: localRevision,
+      lastSyncedRevision: lastSyncedRevision,
+    )) {
       next = config.copyWith(
         syncState: SyncState.conflict,
         syncMessage: 'Remote revision is newer. Pull required.',
         lastRemoteRevision: remoteRevision,
-        lastSyncAt: DateTime.now().toUtc(),
-      );
-    } else if (remoteRevision == localRevision) {
-      next = config.copyWith(
-        syncState: SyncState.synced,
-        syncMessage: 'Remote revision matches local vault',
-        lastRemoteRevision: remoteRevision,
+        lastRemoteModifiedAt: remoteMetadata.lastModified,
         lastSyncAt: DateTime.now().toUtc(),
       );
     } else {
@@ -560,6 +726,7 @@ class MockOssSyncService implements SyncService {
         syncState: SyncState.idle,
         syncMessage: 'Local changes not uploaded yet',
         lastRemoteRevision: remoteRevision,
+        lastRemoteModifiedAt: remoteMetadata.lastModified,
         lastSyncAt: DateTime.now().toUtc(),
       );
     }
@@ -568,17 +735,26 @@ class MockOssSyncService implements SyncService {
   }
 
   @override
-  Future<bool> pullRemoteToLocal() async {
+  Future<bool> pullRemoteToLocal({
+    bool backupLocalIfPresent = false,
+  }) async {
     final remoteBundle = await _fileStore.readRemoteBundle();
     if (remoteBundle == null) {
+      _trace('Pull skipped: mock remote bundle is missing');
       return false;
     }
     final remoteRevision = _readRevision(remoteBundle);
+    if (backupLocalIfPresent) {
+      _trace('Backing up local bundle before replacing it with mock remote data');
+      await _fileStore.backupLocalBundleIfPresent();
+    }
     await _fileStore.replaceLocalBundleWithRemote();
+    final remoteMetadata = await _getRemoteBundleMetadata();
     final config = await _configStore.read();
     final next = config.copyWith(
       lastSyncedRevision: remoteRevision,
       lastRemoteRevision: remoteRevision,
+      lastRemoteModifiedAt: remoteMetadata.lastModified,
       lastSyncAt: DateTime.now().toUtc(),
       syncState: SyncState.synced,
       syncMessage: 'Pulled remote encrypted bundle',
@@ -603,9 +779,11 @@ class MockOssSyncService implements SyncService {
     }
 
     await _fileStore.writeRemoteBundle(localBundle);
+    final uploadedMetadata = await _getRemoteBundleMetadata();
     final next = config.copyWith(
       lastSyncedRevision: localRevision,
       lastRemoteRevision: localRevision,
+      lastRemoteModifiedAt: uploadedMetadata.lastModified,
       lastSyncAt: DateTime.now().toUtc(),
       syncState: SyncState.synced,
       syncMessage: 'Local vault overwrote mock remote bundle',
@@ -621,4 +799,65 @@ class MockOssSyncService implements SyncService {
     final envelope = _serializer.deserializeEnvelope(Uint8List.fromList(bundleBytes));
     return envelope.revision;
   }
+
+  Future<_RemoteBundleMetadata> _getRemoteBundleMetadata() async {
+    final remoteFile = await _fileStore.resolveRemoteBundleFile();
+    if (!await remoteFile.exists()) {
+      return const _RemoteBundleMetadata(exists: false);
+    }
+    final stat = await remoteFile.stat();
+    return _RemoteBundleMetadata(
+      exists: true,
+      lastModified: stat.modified.toUtc(),
+    );
+  }
+
+  Future<int?> _resolveRemoteRevision({
+    required _RemoteBundleMetadata metadata,
+    required DateTime? cachedRemoteModifiedAt,
+    required int? cachedRemoteRevision,
+  }) async {
+    if (!metadata.exists) {
+      return null;
+    }
+    if (_matchesRemoteModifiedAt(metadata.lastModified, cachedRemoteModifiedAt) &&
+        cachedRemoteRevision != null) {
+      _trace('Mock remote Last-Modified unchanged, reusing cached remote revision');
+      return cachedRemoteRevision;
+    }
+    return _readRevision(await _fileStore.readRemoteBundle());
+  }
+
+  bool _matchesRemoteModifiedAt(DateTime? left, DateTime? right) {
+    if (left == null || right == null) {
+      return false;
+    }
+    return left.toUtc().isAtSameMomentAs(right.toUtc());
+  }
+
+  bool _isRemoteNewerThanLocal({
+    required int? remoteRevision,
+    required int localRevision,
+    required int? lastSyncedRevision,
+  }) {
+    if (remoteRevision == null) {
+      return false;
+    }
+    final baselineRevision = lastSyncedRevision ?? localRevision;
+    return remoteRevision > baselineRevision && remoteRevision > localRevision;
+  }
+
+  void _trace(String message) {
+    debugPrint('[mock-oss-sync] $message');
+  }
+}
+
+class _RemoteBundleMetadata {
+  const _RemoteBundleMetadata({
+    required this.exists,
+    this.lastModified,
+  });
+
+  final bool exists;
+  final DateTime? lastModified;
 }
